@@ -62,3 +62,6 @@ The name of the configuration file must be **`config.txt`**. The previously ment
 The `config.txt` file should be located in the same directory as the script. When the script is run, if the `config.txt` file cannot be found, a sample file will be created.
 
 ## Running the script
+The script can be easily run by opening a command prompt. There is no need to open the console with a user that has administrator privileges. All you need to do is place the necessary files mentioned above into a single folder and run the following command.
+
+<pre>powershell.exe -File .\xe-query-replayer.ps1</pre>
