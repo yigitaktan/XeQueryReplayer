@@ -97,3 +97,9 @@ When you run the XEvent Query Replayer using the command mentioned above, the fi
 If the script doesn't encounter any errors during connection and the **[AutoStart]** parameter in the `config.txt` file is set to "**0**", the following screen will appear. You'll be prompted to either press **Enter** to start the replay or press **ESC** to exit the script.
 
 ![xe-run](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/e39ce69a-508b-4cde-8906-02e938e9a64a)
+
+On the previous screen, when you press Enter, the folder containing your XEL files is read from the **[XelPath]** parameter in the `config.txt` file and analyzed. The number of files analyzed and the total number of statements within these files are displayed on the screen as shown below.
+
+![xe-analyzing-files](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/b2cf5804-86cc-4345-8f3c-894a88bd6c09)
+
+
