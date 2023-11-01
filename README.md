@@ -4,6 +4,7 @@
 * **[Script components](#script-components)**
 * **[Prerequisites](#prerequisites)**
 * **[Preparing the config.txt file](#preparing-the-configtxt-file)**
+* **[Running the script](#running-the-script)**
 
 
 ## Getting started with the script
@@ -39,3 +40,23 @@ The **config.txt** file consists of 9 parameters: `AuthenticationType`, `ServerN
 * **[LogType]**: This parameter specifies how the script should perform logging. Upon its first execution, the script creates a file named **log.txt** in the directory it's located in. The LogType parameter can only accept the values **1** or **2**. A value of "**1**" represents basic logging, capturing only informational messages and general errors. A value of "**2**" provides detailed logging; if there are errors in the executed statements, it will document which statements had issues, their parameters, and the specific errors encountered. This can result in the log file becoming excessively large and potentially difficult to open and read.
 
 * **[AutoStart]**: This parameter indicates whether the script should immediately begin the replay process when the main file is executed. This parameter can take two values: "**0**" and "**1**". If you input "**0**", the script won't start the replay automatically. Instead, it will prompt you with the message, "_Please press Enter to start replay or ESC to exit._" If you input "**1**", the script will quickly begin the replay process based on the values entered in `config.txt` without displaying any prompt.
+
+
+If `AuthenticationType` is specified as "**SQL**", all the parameters mentioned above must be written in the `config.txt` file. If it is specified as "**WIN**", the `UserName` and `Password` parameters are not required. If `AuthenticationType` is specified as "**WIN**" and the `UserName` and `Password` parameters are still set to specific values in the file, these two parameters will be skipped, and whether or not they have any values will not affect the operation of the script.
+
+
+The name of the configuration file must be **`config.txt`**. The previously mentioned 9 parameters should be written inside square brackets and then assigned their respective values. Below is an example of how a config.txt file should be written.
+
+<pre>
+[AuthenticationType]=SQL
+[ServerName]=DBPROD01\SQL2019
+[DatabaseName]=DemoDB
+[UserName]=MyDemoUser
+[Password]=Password.1
+[XelPath]=F:\XE-Captures\DBPROD01
+[ReplayType]=3
+[LogType]=1
+[AutoStart]=0
+</pre>
+
+## Running the script
