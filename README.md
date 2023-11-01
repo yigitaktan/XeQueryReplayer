@@ -2,7 +2,7 @@
 
 * **[Getting started with the script](#getting-started-with-the-script)**
 * **[Script components](#script-components)**
-* **[Prerequisites](#Prerequisites)**
+* **[Prerequisites](#prerequisites)**
 * **[Preparing the config.txt file](#preparing-the-configtxt-file)**
 
 
@@ -19,7 +19,7 @@ XEvent Query Replayer consists of a total of 5 files. The codebase is built with
 * **[Microsoft.Data.SqlClient.dll](https://Microsoft.Data.SqlClient.dll):** `Microsoft.Data.SqlClient` is a data provider for Microsoft SQL Server and Azure SQL Database. This namespace has a dependency on the XELite DLL, and XELite cannot be used unless this DLL is in the same directory.
 
 ## Prerequisites
-For the optimal functioning of the script, the machine on which it's being executed must have the **.NET Framework 4.6.2** or a more recent version installed. As highlighted in the "Script components" section, both the `Microsoft.SqlServer.XEvent.XELite.dll` and `Microsoft.Data.SqlClient.dll` files are compatible with this framework version or newer. If you do not have **.NET Framework 4.6.2** or a higher version installed, you can download and install it from this URL: http://go.microsoft.com/fwlink/?linkid=780600
+This script requires that **.NET Framework 4.6.2** or a later version be installed on the machine where it's deployed. As highlighted in the [Script components](#script-components) section, both the `Microsoft.SqlServer.XEvent.XELite.dll` and `Microsoft.Data.SqlClient.dll` files are compatible with this framework version or newer. If you do not have **.NET Framework 4.6.2** or a higher version installed, you can download and install it from this URL: http://go.microsoft.com/fwlink/?linkid=780600
 
 ## Preparing the config.txt file
 The **config.txt** file consists of 9 parameters: `AuthenticationType`, `ServerName`, `DatabaseName`, `UserName`, `Password`, `XelPath`, `ReplayType`, `LogType`, and `AutoStart`.
