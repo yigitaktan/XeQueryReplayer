@@ -22,6 +22,30 @@ XEvent Query Replayer consists of a total of 5 files. The codebase is built with
 ## Prerequisites
 This script requires that **.NET Framework 4.6.2** or a later version be installed on the machine where it's deployed. As highlighted in the [Script components](#script-components) section, both the `Microsoft.SqlServer.XEvent.XELite.dll` and `Microsoft.Data.SqlClient.dll` files are compatible with this framework version or newer. If you do not have **.NET Framework 4.6.2** or a higher version installed, you can download and install it from this URL: http://go.microsoft.com/fwlink/?linkid=780600
 
+If you want to determine which version of the .NET Framework is installed on the machine where the script will be run, you can execute the following PowerShell script to see the highest installed version.
+
+<pre>$release = Get-ItemPropertyValue -LiteralPath 'HKLM:SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full' -Name Release
+switch ($release) {
+    { $_ -ge 533320 } { $version = '4.8.1 or later'; break }
+    { $_ -ge 528040 } { $version = '4.8'; break }
+    { $_ -ge 461808 } { $version = '4.7.2'; break }
+    { $_ -ge 461308 } { $version = '4.7.1'; break }
+    { $_ -ge 460798 } { $version = '4.7'; break }
+    { $_ -ge 394802 } { $version = '4.6.2'; break }
+    { $_ -ge 394254 } { $version = '4.6.1'; break }
+    { $_ -ge 393295 } { $version = '4.6'; break }
+    { $_ -ge 379893 } { $version = '4.5.2'; break }
+    { $_ -ge 378675 } { $version = '4.5.1'; break }
+    { $_ -ge 378389 } { $version = '4.5'; break }
+    default { $version = $null; break }
+}
+
+if ($version) {
+    Write-Host -Object ".NET Framework Version: $version"
+} else {
+    Write-Host -Object '.NET Framework Version 4.5 or later is not detected.'
+}</pre>
+
 ## Preparing the config.txt file
 The **config.txt** file consists of 9 parameters: `AuthenticationType`, `ServerName`, `DatabaseName`, `UserName`, `Password`, `XelPath`, `ReplayType`, `LogType`, and `AutoStart`.
   
