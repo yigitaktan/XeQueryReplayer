@@ -5,6 +5,7 @@
 * **[Prerequisites](#prerequisites)**
 * **[Preparing the config.txt file](#preparing-the-configtxt-file)**
 * **[Running the script](#running-the-script)**
+* **[Encoding requirement](#encoding-requirement)**
 
 
 ## Getting started with the script
@@ -117,3 +118,9 @@ As depicted in the screen above, the displayed information allows for a detailed
 Upon completing the execution of the necessary queries from the specified XEL files, the script displays a summary table as seen below. This table highlights how many Stored Procedures (SP) and ad-hoc queries were successfully executed and how many encountered errors. Additionally, the duration of the replay operation is also indicated.
 
 ![xe-completed](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/5f62d470-5fcd-420b-ae37-e865dbd73c33)
+
+## Encoding requirement
+Both `xe-query-replayer.ps1` and `functions.psm1` files must be set with a character encoding of **UTF-16LE** or **UTF-16BE**. If either of these files has a different encoding standard than specified, the following error message will appear.
+
+![xe-encoding](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/264e600a-fe19-431a-91df-dbceefd43d27)
+
