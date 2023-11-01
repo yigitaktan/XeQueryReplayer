@@ -7,7 +7,7 @@
 * **[Running the script](#running-the-script)**
 * **[Encoding requirement](#encoding-requirement)**
 * **[Creating the test environment](#creating-the-test-environment)**
-* **[PowerShell execution policy settings](#creating-the-test-environment)**
+* **[PowerShell execution policy settings](#powershell-execution-policy-settings)**
 
 
 ## Getting started with the script
