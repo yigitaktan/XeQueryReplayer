@@ -13,11 +13,11 @@ XEvent Query Replayer is a PowerShell script that reads the RPC:Completed and SQ
 ## Script components
 XEvent Query Replayer consists of a total of 5 files. The codebase is built within the `xe-query-replayer.ps1` and `functions.psm1` files.
 
-* **[xe-query-replayer.ps1](https://xe-query-replayer.ps1):** This is the main script. The script is executed by running this file.
-* **[functions.psm1](https://xe-query-replayer.ps1):** All functions used in the `xe-query-replayer.ps1` file are stored in this file, and the script cannot run without it.
-* **[config.txt](https://config.txt):** This file contains various parameters related to how the script operates and the details of the instance to be replayed. You can see these parameters in more detail in the "Preparing the config.txt file" section.
-* **[Microsoft.SqlServer.XEvent.XELite.dll](https://Microsoft.SqlServer.XEvent.XELite.dll):** XELite is a cross-platform library developed by Microsoft to read XEvents from XEL files or live SQL streams. Script reads and processes the XEvent files using the classes within this file.
-* **[Microsoft.Data.SqlClient.dll](https://Microsoft.Data.SqlClient.dll):** `Microsoft.Data.SqlClient` is a data provider for Microsoft SQL Server and Azure SQL Database. This namespace has a dependency on the XELite DLL, and XELite cannot be used unless this DLL is in the same directory.
+* **[xe-query-replayer.ps1](https://github.com/yigitaktan/XeQueryReplayer/blob/main/xe-query-replayer.ps1):** This is the main script. The script is executed by running this file.
+* **[functions.psm1](https://github.com/yigitaktan/XeQueryReplayer/blob/main/functions.psm1):** All functions used in the `xe-query-replayer.ps1` file are stored in this file, and the script cannot run without it.
+* **[config.txt](https://github.com/yigitaktan/XeQueryReplayer/blob/main/config.txt):** This file contains various parameters related to how the script operates and the details of the instance to be replayed. You can see these parameters in more detail in the "Preparing the config.txt file" section.
+* **[Microsoft.SqlServer.XEvent.XELite.dll](https://github.com/yigitaktan/XeQueryReplayer/blob/main/Microsoft.SqlServer.XEvent.XELite.dll):** XELite is a cross-platform library developed by Microsoft to read XEvents from XEL files or live SQL streams. Script reads and processes the XEvent files using the classes within this file.
+* **[Microsoft.Data.SqlClient.dll](https://github.com/yigitaktan/XeQueryReplayer/blob/main/Microsoft.Data.SqlClient.dll):** `Microsoft.Data.SqlClient` is a data provider for Microsoft SQL Server and Azure SQL Database. This namespace has a dependency on the XELite DLL, and XELite cannot be used unless this DLL is in the same directory.
 
 ## Prerequisites
 This script requires that **.NET Framework 4.6.2** or a later version be installed on the machine where it's deployed. As highlighted in the [Script components](#script-components) section, both the `Microsoft.SqlServer.XEvent.XELite.dll` and `Microsoft.Data.SqlClient.dll` files are compatible with this framework version or newer. If you do not have **.NET Framework 4.6.2** or a higher version installed, you can download and install it from this URL: http://go.microsoft.com/fwlink/?linkid=780600
