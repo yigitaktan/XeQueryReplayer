@@ -6,6 +6,7 @@
 * **[Preparing the config.txt file](#preparing-the-configtxt-file)**
 * **[Running the script](#running-the-script)**
 * **[Encoding requirement](#encoding-requirement)**
+* **[Creating the test environment](#creating-the-test-environment)**
 
 
 ## Getting started with the script
@@ -124,3 +125,7 @@ Both `xe-query-replayer.ps1` and `functions.psm1` files must be set with a chara
 
 ![xe-encoding](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/264e600a-fe19-431a-91df-dbceefd43d27)
 
+## Creating the test environment
+You might want to try the script on a test database first. For this, please run the [create-demo-db.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/create-demo-db.sql) file in the instance where you want to perform the test. When the specified file is executed, a new database named DemoDB will be created. This database will create 6 tables and 13 Stored Procedures (SPs), and a user named **MyDemoUser**.
+
+If you wish to generate load using the stored procedures in this demo environment, you can utilize my [SQL Load Generator](https://github.com/yigitaktan/SqlLoadGen) script. Once you begin creating the load, run the [start-capture.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/start-capture.sql) to collect the SP and/or ad-hoc queries.
