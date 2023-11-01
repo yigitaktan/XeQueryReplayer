@@ -102,4 +102,7 @@ On the previous screen, when you press Enter, the folder containing your XEL fil
 
 ![xe-analyzing-files](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/b2cf5804-86cc-4345-8f3c-894a88bd6c09)
 
+After the analysis of the files is completed, the replay process begins, and all the details are displayed on the following screen.
+
+![xe-replay](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/e9804280-c268-4d60-aa54-56557b2c6b5d)
 
