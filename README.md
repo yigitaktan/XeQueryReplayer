@@ -89,4 +89,7 @@ The `config.txt` file should be located in the same directory as the script. Whe
 The script can be easily run by opening a command prompt. There is no need to open the console with a user that has administrator privileges. All you need to do is place the necessary files mentioned above into a single folder and run the following command.
 
 <pre>powershell.exe -File .\xe-query-replayer.ps1</pre>
+
 ![xe-run](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/e39ce69a-508b-4cde-8906-02e938e9a64a)
+
+When you run the XEvent Query Replayer using the command mentioned above, if you've set the **[AutoStart]** parameter in config.txt to "**0**", you'll encounter a screen like the one shown above.
