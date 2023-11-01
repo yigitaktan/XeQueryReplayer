@@ -90,6 +90,10 @@ The script can be easily run by opening a command prompt. There is no need to op
 
 <pre>powershell.exe -File .\xe-query-replayer.ps1</pre>
 
-![xe-run](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/e39ce69a-508b-4cde-8906-02e938e9a64a)
+When you run the XEvent Query Replayer using the command mentioned above, the first thing it does is read the SQL connection information from config.txt and perform a connection test. The message "Establishing connection to the server..." appears on the screen for a very brief period before disappearing. If there is an error in the connection information or for other reasons the connection cannot be established, a message will be displayed on the screen indicating that the connection could not be made, as shown below.
 
-When you run the XEvent Query Replayer using the command mentioned above, if you've set the **[AutoStart]** parameter in config.txt to "**0**", you'll encounter a screen like the one shown above.
+![xe-conn-err](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/16f417c7-f180-4138-9c5d-550194051ea2)
+
+If the script doesn't encounter any errors during connection and the **[AutoStart]** parameter in the `config.txt` file is set to "**0**", the following screen will appear. You'll be prompted to either press **Enter** to start the replay or press **ESC** to exit the script.
+
+![xe-run](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/e39ce69a-508b-4cde-8906-02e938e9a64a)
