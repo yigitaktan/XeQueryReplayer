@@ -42,7 +42,6 @@ The **config.txt** file consists of 9 parameters: `AuthenticationType`, `ServerN
 * **[AutoStart]**: This parameter indicates whether the script should immediately begin the replay process when the main file is executed. This parameter can take two values: "**0**" and "**1**". If you input "**0**", the script won't start the replay automatically. Instead, it will prompt you with the message, "_Please press Enter to start replay or ESC to exit._" If you input "**1**", the script will quickly begin the replay process based on the values entered in `config.txt` without displaying any prompt.
 
 
-
 If `AuthenticationType` is specified as "**SQL**", all the parameters mentioned above must be written in the `config.txt` file. If it is specified as "**WIN**", the `UserName` and `Password` parameters are not required. If `AuthenticationType` is specified as "**WIN**" and the `UserName` and `Password` parameters are still set to specific values in the file, these two parameters will be skipped, and whether or not they have any values will not affect the operation of the script.
 
 
@@ -60,6 +59,6 @@ The name of the configuration file must be **`config.txt`**. The previously ment
 [AutoStart]=0
 </pre>
 
-The **`config.txt`** file should be located in the same directory as the script. When the script is run, if the **`config.txt`** file cannot be found, a sample file will be created.
+The `config.txt` file should be located in the same directory as the script. When the script is run, if the `config.txt` file cannot be found, a sample file will be created.
 
 ## Running the script
