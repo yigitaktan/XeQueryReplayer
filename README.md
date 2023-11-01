@@ -106,4 +106,10 @@ After the analysis of the files is completed, the replay process begins, and all
 
 ![xe-replay2](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/e4dd7bfd-17db-4fab-a871-7fbfa3c6b589)
 
+As depicted in the screen above, the displayed information allows for a detailed tracking of the replay process.
 
+* **Duration:** Indicates the elapsed time since the start of the replay in hours:minutes:seconds format.
+* **Progress:** Visually represents how much of the replay task has been completed through the progress bar.
+* **Percentage:** Shows the percent completion of the replay task.
+* **Process:** Displays how many of the total queries required for replay have been executed.
+* **Files:** Displays how many of the total XEL files have been completed.
