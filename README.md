@@ -113,3 +113,7 @@ As depicted in the screen above, the displayed information allows for a detailed
 * **Percentage:** Shows the percent completion of the replay task.
 * **Process:** Displays how many of the total queries required for replay have been executed.
 * **Files:** Displays how many of the total XEL files have been completed.
+
+Upon completing the execution of the necessary queries from the specified XEL files, the script displays a summary table as seen below. This table highlights how many Stored Procedures (SP) and ad-hoc queries were successfully executed and how many encountered errors. Additionally, the duration of the replay operation is also indicated.
+
+![xe-completed](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/5f62d470-5fcd-420b-ae37-e865dbd73c33)
