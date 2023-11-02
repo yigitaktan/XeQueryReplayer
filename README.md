@@ -127,7 +127,7 @@ Both `xe-query-replayer.ps1` and `functions.psm1` files must be set with a chara
 
 ![xe-encoding](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/264e600a-fe19-431a-91df-dbceefd43d27)
 
-If you get an encoding error, you should open the files in a text editor like Notepad++ and save them as **UTF-16LE** or **UTF-16BE**. How to do this with Notepad++ is shown below.
+If you get an encoding error, you should open the files in a text editor like Notepad++ and save them as **UTF-16LE** or **UTF-16BE**. You can change the encoding in Notepad++ via the Encoding menu as shown below.
 
 ![xe-notepadpp](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/f80f4db3-b54d-4a15-9334-b0bd5fa8ce19)
 
