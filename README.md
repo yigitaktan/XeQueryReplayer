@@ -8,6 +8,7 @@
 * **[Encoding requirement](#encoding-requirement)**
 * **[Creating the test environment](#creating-the-test-environment)**
 * **[PowerShell execution policy settings](#powershell-execution-policy-settings)**
+* **[Logging](#logging)**
 
 
 ## Getting started with the script
@@ -142,4 +143,9 @@ Firstly, you should examine what the execution policy is and how it operates. Yo
 There are several different execution policy settings. For the script to run smoothly, you should select either **Bypass** or **Unrestricted**. You can visit the page where detailed information is provided on setting the execution policy here: [Set-ExecutionPolicy](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-executionpolicy?view=powershell-7.3).
 
 <pre>PS> Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope LocalMachine</pre>
+
+## Logging
+You can follow up on the results of all past operations and the details of any errors encountered in the `log.txt` file located in the script folder. If you set the **[LogType]** parameter in the `config.txt` to "**1**", the script logs essential information and errors. If set to "**2**", it logs all the details of every executed query, including those that encounter errors, which can increase the size of the log file.
+
+![xe-log](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/f5784f91-f1b2-4de7-aa2c-e6b186efd1fa)
 
