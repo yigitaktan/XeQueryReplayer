@@ -16,20 +16,9 @@
 │            │    - Creates tables named 'Users', 'Addresses', 'Orders', 'ProductCategories', 'Products', and 'OrderDetails'.                  │
 │            │    - Inserts sample data into 'ProductCategories' and 'Products'.                                                               │
 │            │    - Using loops, populates 'Users', 'Addresses', 'Orders', and 'OrderDetails' with sample data.                                │
-│            │    - Creates several stored procedures with the names:                                                                          │
-│            │      - sp_AddUserAndAddress                                                                                                     │
-│            │      - sp_UpdateUser                                                                                                            │
-│            │      - sp_DeleteUser                                                                                                            │
-│            │      - sp_AddOrder                                                                                                              │
-│            │      - sp_AddOrderDetail                                                                                                        │
-│            │      - sp_GetAllUsers                                                                                                           │
-│            │      - sp_GetOrdersByUser                                                                                                       │
-│            │      - sp_GetOrderDetails                                                                                                       │
-│            │      - sp_AddProduct                                                                                                            │
-│            │      - sp_UpdateProduct                                                                                                         │
-│            │      - sp_DeleteProduct                                                                                                         │
-│            │      - sp_GetProductsByCategory                                                                                                 │
-│            │      - sp_GetProductCategories                                                                                                  │
+│            │    - Creates stored procedures named: 'sp_AddUserAndAddress', 'sp_UpdateUser', 'sp_DeleteUser', 'sp_AddOrder',                  │
+│            │      'sp_AddOrderDetail, 'sp_GetAllUsers', 'sp_GetOrdersByUser', 'sp_GetOrderDetails', 'sp_AddProduct', 'sp_UpdateProduct',     │
+│            │      'sp_DeleteProduct', 'sp_GetProductsByCategory', 'sp_GetProductCategories'                                                  │
 │            │ 4. Switches to the 'master' database and manages a server login:                                                                │
 │            │    - Checks if a server login named 'MyDemoUser' exists. If it does, it drops it.                                               │
 │            │    - Creates the 'MyDemoUser' login with a specified password.                                                                  │
