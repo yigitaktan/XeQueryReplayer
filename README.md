@@ -138,3 +138,8 @@ If you encounter an error similar to the one shown in the screenshot below, it m
 
 
 Firstly, you should examine what the execution policy is and how it operates. You can conduct a detailed review through the following link: [About Execution Policies](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-7.3).
+
+There are several different execution policy settings. For the script to run smoothly, you should select either **Bypass** or **Unrestricted**. You can visit the page where detailed information is provided on setting the execution policy here: [Set-ExecutionPolicy](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/set-executionpolicy?view=powershell-7.3).
+
+<pre>PS> Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope LocalMachine</pre>
+
