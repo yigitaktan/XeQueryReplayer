@@ -1,4 +1,4 @@
-﻿/*
+/*
 ╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 ║ THE DEVELOPER MAKES NO GUARANTEE THAT THE T-SQL SCRIPT WILL SATISFY YOUR SPECIFIC REQUIREMENTS, OPERATE ERROR-FREE, OR FUNCTION WITHOUT      ║
 ║ INTERRUPTION. WHILE EVERY EFFORT HAS BEEN MADE TO ENSURE THE STABILITY AND EFFICACY OF THE SOFTWARE, IT IS INHERENT IN THE NATURE OF         ║
