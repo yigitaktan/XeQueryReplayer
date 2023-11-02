@@ -9,6 +9,7 @@
 * **[Creating the test environment](#creating-the-test-environment)**
 * **[PowerShell execution policy settings](#powershell-execution-policy-settings)**
 * **[Logging](#logging)**
+* **[Errors](#errors)**
 
 
 ## Getting started with the script
@@ -153,3 +154,18 @@ You can follow up on the results of all past operations and the details of any e
 
 ![xe-log](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/f5784f91-f1b2-4de7-aa2c-e6b186efd1fa)
 
+## Errors
+If you've configured your policy settings as described in the "[PowerShell execution policy settings](#powershell-execution-policy-settings)" section, the only remaining issue you might encounter is related to DLL errors. DLLs within files downloaded from the internet are often blocked by Windows for security reasons, and this is likely to happen with "**Microsoft.SqlServer.XEvent.XELite.dll**" and "**Microsoft.Data.SqlClient.dll**". If you receive an error message like the one below, it suggests you've encountered this issue.
+
+![xe-dllerror](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/2dcd6f86-16c0-4be3-8b22-b3344e2ac76f)
+
+There are two methods to resolve this problem. First, you can navigate to the **Properties** of the two files and, if you encounter a notice like the one shown in the following screenshot, you can check the "**Unblock**" checkbox to resolve the issue.
+
+![xe-filesblocked](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/bc3a954e-3eee-4608-8c6e-960b1aa83757)
+
+Alternatively, you can use the Unblock-File PowerShell command shown below to unblock them.
+
+<pre>
+    PS C:\> Unblock-File -Path "C:\xe-query-replayer\Microsoft.SqlServer.XEvent.XELite.dll"
+    PS C:\> Unblock-File -Path "C:\xe-query-replayer\Microsoft.Data.SqlClient.dll"
+</pre>
