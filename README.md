@@ -132,3 +132,9 @@ You might want to try the script on a test database first. For this, please run 
 If you wish to generate load using the stored procedures in this demo environment, you can utilize my [SQL Load Generator](https://github.com/yigitaktan/SqlLoadGen) script. Once you begin creating the load, run the [start-capture.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/start-capture.sql) to collect the SP and/or ad-hoc queries.
 
 ## PowerShell execution policy settings
+If you encounter an error similar to the one shown in the screenshot below, it means that you are receiving this error due to your PowerShell execution policy settings.
+
+![xe-policyerror](https://github.com/yigitaktan/XeQueryReplayer/assets/51110247/50af4928-2d8a-4b3e-baa1-914f578d709c)
+
+
+Firstly, you should examine what the execution policy is and how it operates. You can conduct a detailed review through the following link: [About Execution Policies](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-7.3).
