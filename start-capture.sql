@@ -31,10 +31,10 @@ DECLARE
     @CollectType         VARCHAR(50)     = 'sp-and-adhoc';
 
 DECLARE
-	@CreateXeSession     NVARCHAR(MAX),
+    @CreateXeSession     NVARCHAR(MAX),
     @StartXeSession      NVARCHAR(MAX),
     @DropXeSession       NVARCHAR(MAX),
-	@xEventSessionName   VARCHAR(25),
+    @xEventSessionName   VARCHAR(25),
     @RandomID            VARCHAR(4)
 	
 SET @RandomID = CHAR(CAST((RAND() * 26) + 65 AS INT)) + CHAR(CAST((RAND() * 26) + 65 AS INT)) + CHAR(CAST((RAND() * 10) + 48 AS INT)) + CHAR(CAST((RAND() * 10) + 48 AS INT));
