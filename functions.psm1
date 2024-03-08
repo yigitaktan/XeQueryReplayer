@@ -55,7 +55,7 @@ function Connection_Spinner {
     Rendering the title table in the console to showcase the application name, developer's details, and version.
 #>
 function Show_Title_Table {
-  $AppVer = "10.2023.3.001"
+  $AppVer = "03.2024.3.001"
   Write-Host " ┌─────────────────────────────────────────┐" -ForegroundColor DarkGray
   Write_Color_Text -Text ' │          ','XEvent Query Replayer','          │' -Colour DarkGray,White,DarkGray
   Write-Host " ├─────────────┬───────────┬───────────────┤" -ForegroundColor DarkGray
@@ -525,7 +525,13 @@ function Read_XEvents {
           }
 
           if ($XEvent.Fields["statement"] -ne "exec sp_reset_connection") {
-            Execute_SqlQuery -Type "SP" -Statement $XEvent.Fields["statement"] -ConnectionString $Global:ConnectionString
+          
+            if ($XEvent.Fields["object_name"] -eq "sp_executesql") {
+              Execute_SqlQuery -Type "ADHOC" -Statement $XEvent.Fields["statement"] -ConnectionString $Global:ConnectionString
+            }
+            if ($XEvent.Fields["object_name"] -ne "sp_executesql") {
+              Execute_SqlQuery -Type "SP" -Statement $XEvent.Fields["statement"] -ConnectionString $Global:ConnectionString
+            }
 
             $completedBlocks = [math]::Truncate(($Global:ExecCount / $Global:TotalQueryCount) * 25)
             $PercentageCalculation = [math]::Truncate(($Global:ExecCount / $Global:TotalQueryCount) * 100)
