@@ -530,7 +530,12 @@ function Read_XEvents {
               Execute_SqlQuery -Type "ADHOC" -Statement $XEvent.Fields["statement"] -ConnectionString $Global:ConnectionString
             }
             if ($XEvent.Fields["object_name"] -ne "sp_executesql") {
-              Execute_SqlQuery -Type "SP" -Statement $XEvent.Fields["statement"] -ConnectionString $Global:ConnectionString
+              if ($XEvent.Fields["statement"] -match "\S+\s+exec") {
+                Execute_SqlQuery -Type "ADHOC" -Statement $XEvent.Fields["statement"] -ConnectionString $Global:ConnectionString
+              }
+              else {
+                Execute_SqlQuery -Type "SP" -Statement $XEvent.Fields["statement"] -ConnectionString $Global:ConnectionString
+              }
             }
 
             $completedBlocks = [math]::Truncate(($Global:ExecCount / $Global:TotalQueryCount) * 25)
