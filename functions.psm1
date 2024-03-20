@@ -55,7 +55,7 @@ function Connection_Spinner {
     Rendering the title table in the console to showcase the application name, developer's details, and version.
 #>
 function Show_Title_Table {
-  $AppVer = "03.2024.3.001"
+  $AppVer = "03.2024.3.002"
   Write-Host " ┌─────────────────────────────────────────┐" -ForegroundColor DarkGray
   Write_Color_Text -Text ' │          ','XEvent Query Replayer','          │' -Colour DarkGray,White,DarkGray
   Write-Host " ├─────────────┬───────────┬───────────────┤" -ForegroundColor DarkGray
