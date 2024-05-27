@@ -55,13 +55,84 @@ function Connection_Spinner {
     Rendering the title table in the console to showcase the application name, developer's details, and version.
 #>
 function Show_Title_Table {
-  $AppVer = "05.2024.3.001"
+  #$AppVer = "05.2024.3.001"
   Write-Host " ┌─────────────────────────────────────────┐" -ForegroundColor DarkGray
   Write_Color_Text -Text ' │          ','XEvent Query Replayer','          │' -Colour DarkGray,White,DarkGray
   Write-Host " ├─────────────┬───────────┬───────────────┤" -ForegroundColor DarkGray
-  Write_Color_Text -Text ' │ ','Yigit Aktan',' │ ','Microsoft',' │ ',$AppVer,' │' -Colour DarkGray,Gray,DarkGray,Gray,DarkGray,Gray,DarkGray,Gray,DarkGray
+  Write_Color_Text -Text ' │ ','Yigit Aktan',' │ ','Microsoft',' │ ',$Global:AppVer,' │' -Colour DarkGray,Gray,DarkGray,Gray,DarkGray,Gray,DarkGray,Gray,DarkGray
   Write-Host " └─────────────┴───────────┴───────────────┘" -ForegroundColor DarkGray
   Write-Host ""
+}
+
+<# 
+    This function creates a console menu with options and highlights the selected option.
+    It uses specified colors for the menu rows and allows users to navigate through 
+    the options using the arrow keys. The menu title and options are displayed with 
+    formatted text, and the selected option is returned when the Enter key is pressed.
+#>
+function Create_Menu (){  
+  param(
+      [Parameter(Mandatory=$True)][array]$MenuOptions,
+      [Parameter(Mandatory=$True)][array]$MenuRowColor
+  )
+
+  $MaxValue = $MenuOptions.count-1
+  $Selection = 0
+  $EnterPressed = $False
+  
+  Clear-Host
+
+  while($EnterPressed -eq $False){
+      Write-Host " ┌─────────────────────────────────────────┐" -ForegroundColor DarkGray
+      Write_Color_Text -Text ' │          ','XEvent Query Replayer','          │' -Colour DarkGray,White,DarkGray
+      Write-Host " ├─────────────┬───────────┬───────────────┤" -ForegroundColor DarkGray
+      Write_Color_Text -Text ' │ ','Yigit Aktan',' │ ','Microsoft',' │ ',$Global:AppVer,' │' -Colour DarkGray,Gray,DarkGray,Gray,DarkGray,Gray,DarkGray,Gray,DarkGray
+      Write-Host " └─────────────┴───────────┴───────────────┘" -ForegroundColor DarkGray
+      Write-Host ""
+
+      for ($i=0; $i -le $MaxValue; $i++){
+          
+          if ($i -eq $Selection){
+            Write-Host " " -NoNewline
+              Write-Host -BackgroundColor $MenuRowColor -ForegroundColor Black " $($MenuOptions[$i]) "         
+          } else {
+            Write-Host " " -NoNewline
+              Write-Host " $($MenuOptions[$i]) "        
+          }
+      }
+ 
+      $KeyInput = $host.ui.rawui.readkey("NoEcho,IncludeKeyDown").virtualkeycode
+
+      switch($KeyInput){        
+          13{
+              $EnterPressed = $True
+              return $Selection
+              Clear-Host
+              break
+          }
+          38{
+              if ($Selection -eq 0){
+                  $Selection = $MaxValue
+              } else {
+                  $Selection -= 1
+              }              
+              Clear-Host
+              break           
+          }
+          40{
+              if ($Selection -eq $MaxValue){                
+                  $Selection = 0
+              } else {
+                  $Selection +=1
+              }
+              Clear-Host
+              break             
+          }
+          default{
+              Clear-Host
+          }
+      }
+  }
 }
 
 <#
@@ -240,6 +311,26 @@ function Validate_Config_File {
     }
   }
 
+
+  $scriptPath = $PSScriptRoot
+  $file1 = "Microsoft.Data.SqlClient.dll"
+  $file2 = "Microsoft.SqlServer.XEvent.XELite.dll"
+
+  $file1Path = Join-Path -Path $scriptPath -ChildPath $file1
+  $file2Path = Join-Path -Path $scriptPath -ChildPath $file2
+
+  $file1Exists = Test-Path -Path $file1Path
+  $file2Exists = Test-Path -Path $file2Path
+
+  if (-not $file1Exists -and -not $file2Exists) {
+    $ErrorMessages += "$file1 and $file2 not found. Make sure they are in the same path as the script."
+  } elseif (-not $file1Exists) {
+    $ErrorMessages += "$file1 not found. Make sure it is in the same path as the script."
+  } elseif (-not $file2Exists) {
+    $ErrorMessages += "$file2 not found. Make sure it is in the same path as the script."
+  }
+
+  
   if ($ErrorMessages.Count -gt 0) {
     $ErrorMessages | ForEach-Object {
       Write_Error_Text -Text $_ -Prefix " [x]" -Color "Gray","Red"
