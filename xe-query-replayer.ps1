@@ -22,7 +22,7 @@
 #>
 $Host.UI.RawUI.WindowTitle = "XEvent Query Replayer"
 
-$Global:AppVer = "05.2024.3.002"
+$Global:AppVer = "05.2024.3.003"
 
 <# 
     Verifying the encoding of the script and its associated function file.
