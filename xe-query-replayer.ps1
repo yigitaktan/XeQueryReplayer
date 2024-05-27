@@ -22,6 +22,8 @@
 #>
 $Host.UI.RawUI.WindowTitle = "XEvent Query Replayer"
 
+$Global:AppVer = "05.2024.3.002"
+
 <# 
     Verifying the encoding of the script and its associated function file.
     Ensuring they are encoded in UTF-16LE or UTF-16BE, which is necessary for correct execution.
@@ -220,12 +222,24 @@ if (-not $ConnectionSuccessful) {
   exit
 }
 
+<# 
+    If AutoStart is set to 0, this block displays a menu with options to start the replay process or exit.
+    The menu allows the user to select an option, and based on the selection, either the replay process is 
+    started or the script exits.
+#>
 if ($AutoStart -eq 0) {
   Move_The_Cursor 1 6
-  Write_Color_Text -Text "Please press ","Enter"," to start replay or ","ESC"," to exit." -Colour DarkGray,Gray,DarkGray,Gray,DarkGray -NoNewline
-  $ReadKeyResponse = Read_Key_Until_Pressed
-  if ($ReadKeyResponse -eq "START") {
-  }
+  $MenuOptionArray = @("Start Replay","Exit")
+  $MenuResult = Create_Menu -MenuOptions $MenuOptionArray -MenuRowColor Gray
+
+Switch($MenuResult){
+    0 {
+
+    }
+    1 {
+        Exit
+    }
+}
 }
 
 <# 
