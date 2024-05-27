@@ -55,7 +55,7 @@ function Connection_Spinner {
     Rendering the title table in the console to showcase the application name, developer's details, and version.
 #>
 function Show_Title_Table {
-  $AppVer = "03.2024.3.002"
+  $AppVer = "05.2024.3.001"
   Write-Host " ┌─────────────────────────────────────────┐" -ForegroundColor DarkGray
   Write_Color_Text -Text ' │          ','XEvent Query Replayer','          │' -Colour DarkGray,White,DarkGray
   Write-Host " ├─────────────┬───────────┬───────────────┤" -ForegroundColor DarkGray
@@ -339,80 +339,81 @@ function Write_Error_Text {
 #>
 function Execute_SqlQuery {
   param(
-    [ValidateSet("SP","ADHOC")]
-    [string]$Type,
-    [string]$Statement,
-    [string]$ConnectionString
+      [ValidateSet("SP", "ADHOC")]
+      [string]$Type,
+      [string]$Statement,
+      [string]$ConnectionString
   )
 
-  $SqlConnection = New-Object System.Data.SqlClient.SqlConnection
-  $SqlConnection.ConnectionString = $ConnectionString
-  $SqlConnection.Open()
-
-  $SqlCommand = $SqlConnection.CreateCommand()
-
-  if ($Type -eq "SP") {
-    $SqlCommand.CommandType = [System.Data.CommandType]::StoredProcedure
-
-    $SpParts = $Statement -split "\s+"
-    $SpName = $SpParts[1].TrimEnd(";")
-    $SqlCommand.CommandText = $SpName
-
-    $ParamString = $Statement.Substring($Statement.IndexOf($SpName) + $SpName.Length).Trim()
-    $ParamPairs = $ParamString -split ","
-
-    foreach ($ParamPair in $ParamPairs) {
-      $PairParts = $ParamPair -split "="
-      if ($PairParts.Count -eq 2) {
-        $ParamName = $PairParts[0].Trim()
-        $ParamValue = $PairParts[1].Trim()
-        if ($ParamValue.EndsWith(";")) {
-          $ParamValue = $ParamValue.TrimEnd(";")
-        }
-        $ParamValue = $ParamValue -replace "^N?'|'$",""
-        $SqlParameter = New-Object System.Data.SqlClient.SqlParameter $ParamName,$ParamValue
-        $SqlCommand.Parameters.Add($SqlParameter) | Out-Null
-      }
-    }
-  } elseif ($Type -eq "ADHOC") {
-    $SqlCommand.CommandType = [System.Data.CommandType]::Text
-    $SqlCommand.CommandText = $Statement.TrimEnd(";")
-  }
-
   try {
-    $SqlCommand.ExecuteNonQuery() | Out-Null
-    $Global:SuccessfulQueryCount++
-    $Global:ExecCount++
-    if ($Type -eq "SP") {
-      $Global:SuccessfulSPQueryCount++
-      $Global:SuccessfulSPQueryCountPerFile++
-    } else {
-      $Global:SuccessfulAdhocQueryCount++
-      $Global:SuccessfulAdhocQueryCountPerFile++
-    }
-  }
-  catch {
-    if ($Global:LogType -eq 2) {
-      if ($Type -eq "SP") {
-        Write_Log_To_File -FilePath $Global:LogFile -LogMsg "[Type]     : Error`n[SP Name]  : $SpName`n[Message]  : $_" | Out-Null
-      }
-      else {
-        $TrimmedAdHocText = $Statement.TrimStart()
-        Write_Log_To_File -FilePath $Global:LogFile -LogMsg "[Type]     : Error`n[Ad-Hoc]   : $TrimmedAdHocText`n[Message]  : $_" | Out-Null
-      }
-    }
+      $SqlConnection = New-Object System.Data.SqlClient.SqlConnection($ConnectionString)
+      $SqlCommand = $SqlConnection.CreateCommand()
+      $SqlConnection.Open()
 
-    $Global:FailedQueryCount++
-    $Global:ExecCount++
-    if ($Type -eq "SP") {
-      $Global:FailedSPQueryCount++
-    }
-    else {
-      $Global:FailedAdhocQueryCount++
-    }
-  }
-  finally {
-    $SqlConnection.Close()
+      if ($Type -eq "SP") {
+          $SqlCommand.CommandType = [System.Data.CommandType]::Text
+
+          $SpName = $Statement.Split(' ')[1].TrimEnd(';')
+          
+          if ($SpName -ieq "sp_reset_connection") {
+              return
+          }
+
+          $ParamString = $Statement.Substring($Statement.IndexOf($SpName) + $SpName.Length).Trim()
+
+          $ParamPairs = $ParamString -split ","
+          $ParamList = @()
+          foreach ($ParamPair in $ParamPairs) {
+              $PairParts = $ParamPair -split "="
+              if ($PairParts.Count -eq 2) {
+                  $ParamName = $PairParts[0].Trim()
+                  $ParamValue = $PairParts[1].Trim()
+
+                  if ($ParamValue -match "^N'|^'") {
+                      $ParamList += "$ParamName=$ParamValue"
+                  } elseif ($ParamValue -match "^\d+$") {
+                      $ParamList += "$ParamName=$ParamValue"
+                  } else {
+                      $ParamList += "$ParamName=N'$ParamValue'"
+                  }
+              }
+          }
+
+          $SqlCommand.CommandText = "exec $SpName " + ($ParamList -join ", ")
+      } elseif ($Type -eq "ADHOC") {
+          $SqlCommand.CommandType = [System.Data.CommandType]::Text
+          $SqlCommand.CommandText = $Statement.TrimEnd(";")
+      }
+
+      $SqlCommand.ExecuteNonQuery() | Out-Null
+      $Global:SuccessfulQueryCount++
+      $Global:ExecCount++
+      if ($Type -eq "SP") {
+          $Global:SuccessfulSPQueryCount++
+          $Global:SuccessfulSPQueryCountPerFile++
+      } else {
+          $Global:SuccessfulAdhocQueryCount++
+          $Global:SuccessfulAdhocQueryCountPerFile++
+      }
+  } catch {
+      if ($Global:LogType -eq 2) {
+          if ($Type -eq "SP") {
+              Write_Log_To_File -FilePath $Global:LogFile -LogMsg "[Type]     : Error`n[SP Name]  : $SpName`n[Message]  : $_" | Out-Null
+          } else {
+              $TrimmedAdHocText = $Statement.TrimStart()
+              Write_Log_To_File -FilePath $Global:LogFile -LogMsg "[Type]     : Error`n[Ad-Hoc]   : $TrimmedAdHocText`n[Message]  : $_" | Out-Null
+          }
+      }
+
+      $Global:FailedQueryCount++
+      $Global:ExecCount++
+      if ($Type -eq "SP") {
+          $Global:FailedSPQueryCount++
+      } else {
+          $Global:FailedAdhocQueryCount++
+      }
+  } finally {
+      $SqlConnection.Close()
   }
 }
 
