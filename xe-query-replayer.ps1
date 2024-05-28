@@ -1,18 +1,18 @@
 <#
-╔════════════════════════════════════════════════════════════════════════════════╗
-║ THE DEVELOPER MAKES NO GUARANTEE THAT THE POWERSHELL SCRIPT WILL SATISFY YOUR  ║
-║ SPECIFIC REQUIREMENTS, OPERATE ERROR-FREE, OR FUNCTION WITHOUT INTERRUPTION.   ║
-║ WHILE EVERY EFFORT HAS BEEN MADE TO ENSURE THE STABILITY AND EFFICACY OF THE   ║
-║ SOFTWARE, IT IS INHERENT IN THE NATURE OF SOFTWARE DEVELOPMENT THAT UNEXPECTED ║
-║ ISSUES MAY OCCUR. YOUR PATIENCE AND UNDERSTANDING ARE APPRECIATED AS I         ║
-║ CONTINUALLY STRIVE TO IMPROVE AND ENHANCE MY SOFTWARE SOLUTIONS.               ║
-╚════════════════════════════════════════════════════════════════════════════════╝
-┌───────────┬────────────────────────────────────────────────────────────────────┐
-│ Usage     │ 1) Run CMD or PowerShell                                           │
-│           │ 2) powershell.exe -File .\xe-query-replayer.ps1                    │
-├───────────┼────────────────────────────────────────────────────────────────────┤
-│ Developer │ Yigit Aktan - yigita@microsoft.com                                 │
-└───────────┴────────────────────────────────────────────────────────────────────┘
+╔═════════════════════════════════════════════════════════════════════════════════╗
+║ THE DEVELOPER MAKES NO GUARANTEE THAT THE POWERSHELL SCRIPT WILL SATISFY YOUR   ║
+║ SPECIFIC REQUIREMENTS, OPERATE ERROR-FREE, OR FUNCTION WITHOUT INTERRUPTION.    ║
+║ WHILE EVERY EFFORT HAS BEEN MADE TO ENSURE THE STABILITY AND EFFICACY OF THE    ║
+║ SOFTWARE, IT IS INHERENT IN THE NATURE OF SOFTWARE DEVELOPMENT THAT UNEXPECTED  ║
+║ ISSUES MAY OCCUR. YOUR PATIENCE AND UNDERSTANDING ARE APPRECIATED AS I          ║
+║ CONTINUALLY STRIVE TO IMPROVE AND ENHANCE MY SOFTWARE SOLUTIONS.                ║
+╚═════════════════════════════════════════════════════════════════════════════════╝
+┌───────────┬─────────────────────────────────────────────────────────────────────┐
+│ Usage     │ 1) Run CMD or PowerShell                                            │
+│           │ 2) PowerShell -ExecutionPolicy Bypass -File .\xe-query-replayer.ps1 │
+├───────────┼─────────────────────────────────────────────────────────────────────┤
+│ Developer │ Yigit Aktan - yigita@microsoft.com                                  │
+└───────────┴─────────────────────────────────────────────────────────────────────┘
 #>
 
 <#
@@ -232,14 +232,14 @@ if ($AutoStart -eq 0) {
   $MenuOptionArray = @("Start Replay","Exit")
   $MenuResult = Create_Menu -MenuOptions $MenuOptionArray -MenuRowColor Gray
 
-Switch($MenuResult){
-    0 {
+  Switch($MenuResult){
+      0 {
 
-    }
-    1 {
-        Exit
-    }
-}
+      }
+      1 {
+          Exit
+      }
+  }
 }
 
 <# 
