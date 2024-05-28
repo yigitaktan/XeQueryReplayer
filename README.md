@@ -90,7 +90,7 @@ The `config.txt` file should be located in the same directory as the script. Whe
 ## Running the script
 The script can be easily run by opening a command prompt. There is no need to open the console with a user that has administrator privileges. All you need to do is place the necessary files mentioned above into a single folder and run the following command.
 
-<pre>powershell.exe -File .\xe-query-replayer.ps1</pre>
+<pre>PowerShell -ExecutionPolicy Bypass -File .\xe-query-replayer.ps1</pre>
 
 When you run the XEvent Query Replayer using the command mentioned above, the first thing it does is read the SQL connection information from config.txt and perform a connection test. The message "_Establishing connection to the server..._" appears on the screen for a very brief period before disappearing. If there is an error in the connection information or for other reasons the connection cannot be established, a message will be displayed on the screen indicating that the connection could not be made, as shown below.
 
