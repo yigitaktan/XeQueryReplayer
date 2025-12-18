@@ -379,7 +379,7 @@ BEGIN;
 END;
 
 -- Create the login
-CREATE LOGIN MyDemoUser WITH PASSWORD = 'Password.1';
+CREATE LOGIN MyDemoUser WITH PASSWORD = 'My_N1w-H@rd-P@s$w0rd.123';
 GO
 
 USE [DemoDB]
@@ -465,3 +465,4 @@ GO
 EXEC dbo.sp_GetProductCategories
 GO
 */
+
