@@ -1,4 +1,4 @@
-USE [DemoDB_cL120];
+USE [DemoDB_cL120]
 GO
 
 ;WITH stmt_level AS
