@@ -1,7 +1,7 @@
 USE master;
 GO
 
-DECLARE @DbName sysname  = N'MyProdDB';
+DECLARE @DbName sysname  = N'DemoDB';
 DECLARE @TargetLevel int = 120;
 
 BEGIN TRY
