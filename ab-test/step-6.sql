@@ -1,4 +1,4 @@
-USE [DemoDB];
+USE [DemoDB]
 GO
 
 ;WITH stmt_level AS
