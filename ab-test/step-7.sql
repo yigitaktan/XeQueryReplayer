@@ -1,0 +1,4 @@
+USE [master]
+GO
+
+DBCC CLONEDATABASE (DemoDB, DemoDB_cL120);
