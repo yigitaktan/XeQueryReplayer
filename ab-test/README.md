@@ -15,3 +15,6 @@ When you change the compatibility level in SQL Server. In other words, when you 
 This document focuses on the most critical part of that process: A/B testing. Specifically, it explains how to use [XEvent Query Replayer](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md) to validate query behavior and performance during compatibility level changes, and how to confidently assess the impact of those changes before going live.
 
 The diagram below illustrates the entire end-to-end workflow, starting from capturing workload data on the production server and continuing through all subsequent stages of the A/B testing and analysis process.
+
+<img width="1040" height="423" alt="Untitled Diagram drawio" src="https://github.com/user-attachments/assets/7ca10520-1d09-469e-9e77-6adc8c0819c3" />
+
