@@ -3,7 +3,7 @@
 
 > [!IMPORTANT]
 > This document may have newer versions over time. To always read the most up-to-date and accurate version, make sure to refer to the following link:<br/><br/>
-> https://github.com/yigitaktan/XeQueryReplayer/tree/main/ab-test<br/><br/>
+> https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/README.md<br/><br/>
 > That repository is the authoritative source and will always reflect the latest updates and improvements.
 
 <br/>
