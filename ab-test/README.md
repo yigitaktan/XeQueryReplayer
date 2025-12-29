@@ -127,3 +127,13 @@ At the beginning of the document, I shared the documentation links that walk thr
 
 <img width="581" height="360" alt="step5" src="https://github.com/user-attachments/assets/9aaab72a-c1ea-4ff9-aa34-b31ab5db5e04" />
 
+<br/>
+
+## Step 6 / Round 1 - Verify Collected Data
+After the replay finishes, you should validate that the replayed queries made it into Query Store. The easiest way to do that is to run [step-6.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-6.sql), which checks whether Query Store has stored the expected query metadata. If Query Store is empty, missing data, or looks incomplete, don’t move on to the next steps yet, stop and troubleshoot first. At this stage, you need to understand why the data isn’t there.
+
+In practice, the most common cause is that the replay workload includes INSERT / UPDATE / DELETE activity, which changes data over time. If your replay database state doesn’t truly match the capture start point, queries can fail or behave differently, and Query Store won’t reflect the workload correctly. In those cases, repeating the point-in-time restore and replaying again is usually the cleanest and healthiest way to get reliable results.
+
+<img width="716" height="49" alt="step6" src="https://github.com/user-attachments/assets/c273a041-27a3-4e91-ade5-e083b84b89db" />
+
+
