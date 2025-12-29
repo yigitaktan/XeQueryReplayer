@@ -39,21 +39,21 @@ Start with the baseline triage setup below. It keeps noise under control while s
 
 ```sql
 DECLARE
-      @DbA sysname                     = N'DemoDB_CL120'     -- LowerCL (baseline)
-    , @DbB sysname                     = N'DemoDB_CL170'     -- HigherCL (candidate)
-    , @MinExecCount bigint             = 50                  -- reduce low-signal noise
-    , @MinRegressionRatio decimal(9,4) = 1.25                -- only show >= 25% regressions
-    , @TopN int                        = 100                 -- focus on top offenders
-    , @StartTime datetime2(0)          = NULL                -- optionally set replay window
-    , @EndTime   datetime2(0)          = NULL
-    , @Metric sysname                  = N'LogicalReads'     -- LogicalReads | CPU | Duration
-    , @GroupBy sysname                 = N'QueryHash'        -- QueryHash | QueryText | NormalizedText
-    , @StatementType varchar(10)       = N'ALL'              -- ALL | SELECT | INSERT | UPDATE | DELETE
-    , @IncludeAdhoc bit                = 1                   -- include ad-hoc queries
-    , @IncludeSP bit                   = 1                   -- include stored procedures
-    , @OnlyMultiPlan bit               = 0                   -- set 1 to focus only on multi-plan
-    , @PersistResults bit              = 1
-    , @ResultsTable sysname            = N'dbo.QueryStoreCLRegressionResults';
+      @DbA sysname                     = N'DemoDB_CL120'           -- LowerCL (baseline database)
+    , @DbB sysname                     = N'DemoDB_CL170'           -- HigherCL (candidate database)
+    , @MinExecCount bigint             = 50                        -- Minimum execution count to reduce low-signal noise
+    , @MinRegressionRatio decimal(9,4) = 1.25                      -- Only include regressions >= 25% (AvgMetric_H / AvgMetric_L)
+    , @TopN int                        = 100                       -- Limit output to top N regressions by impact
+    , @StartTime datetime2(0)          = NULL                      -- Optional start of Query Store analysis window
+    , @EndTime   datetime2(0)          = NULL                      -- Optional end of Query Store analysis window
+    , @Metric sysname                  = N'LogicalReads'           -- Comparison metric: LogicalReads | CPU | Duration
+    , @GroupBy sysname                 = N'QueryHash'              -- Query grouping strategy: QueryHash | QueryText | NormalizedText
+    , @StatementType varchar(10)       = N'ALL'                    -- Statement filter: ALL | SELECT | INSERT | UPDATE | DELETE
+    , @IncludeAdhoc bit                = 1                         -- Include ad-hoc queries (1 = include, 0 = exclude)
+    , @IncludeSP bit                   = 1                         -- Include stored procedure statements (1 = include, 0 = exclude)
+    , @OnlyMultiPlan bit               = 0                         -- 1 = return only query groups with multiple plans
+    , @PersistResults bit              = 1                         -- Persist comparison results (1 = enable, 0 = disable)
+    , @ResultsTable sysname            = N'dbo.RegressionResults'; -- Target table used when @PersistResults = 1
 ```
 Execute the full script after setting parameters. The script reads these parameters and produces the result sets described below.
 
