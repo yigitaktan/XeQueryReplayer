@@ -9,7 +9,7 @@
 * **[Result Sets Overview](#result-sets-overview)**
 * **[Result Set #1 – Regression Overview (Primary Analysis View)](#result-set-1--regression-overview-primary-analysis-view)**
 * **[Result Set #2 - Summary Statistics](#result-set-2---summary-statistics)**
-* **[Result Set #3 – Multi-Plan Drill-Down (Plan-Level Metrics)](#result-set-3--multi-plan-drill-down-plan-level-metrics)**
+* **[Result Set #3 - Multi-Plan Drill-Down (Plan-Level Metrics)](#result-set-3--multi-plan-drill-down-plan-level-metrics)**
 * **[Result Set #4 - Dominant Plan Shape Comparison](#result-set-4---dominant-plan-shape-comparison)**
 * **[Understanding ConfidenceFlags](#understanding-confidenceflags)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
