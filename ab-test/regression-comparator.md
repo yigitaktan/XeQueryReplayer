@@ -70,6 +70,7 @@ DECLARE
     , @OnlyMultiPlan bit               = 0                   -- set 1 to focus only on multi-plan
     , @PersistResults bit              = 1
     , @ResultsTable sysname            = N'dbo.QueryStoreCLRegressionResults';
+```
 
 -- Execute the full script after setting parameters
 -- (The script reads these parameters and produces the result sets described below.)
