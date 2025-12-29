@@ -341,11 +341,24 @@ This is why the default analysis workflow prioritizes ImpactScore over ratios, a
 The script produces multiple result sets, each designed to answer a different analytical question during a compatibility level A/B comparison.  
 Rather than forcing all information into a single, overloaded output, the results are intentionally separated to support a structured analysis workflow.
 
-Each result set builds on the previous one:
+Each result set builds on the previous one and is intended to be consumed in sequence:
 
-- The first result set identifies where regressions exist and how severe they are
-- Subsequent result sets explain why those regressions occurred, focusing on plan behavior and execution characteristics
-- Later result sets provide diagnostic detail needed for root-cause analysis and mitigation decisions
+- **Result Set #1 – Regression Overview**  
+  Identifies where regressions exist by comparing LowerCL and HigherCL at the query-group level.  
+  This result set quantifies regression severity using metrics such as AvgMetric delta, RegressionRatio, and ImpactScore, and serves as the primary entry point for analysis.
+
+- **Result Set #2 – Summary Statistics**  
+  Provides an aggregated, high-level view of the overall regression landscape, including counts, total impact, and distribution characteristics.  
+  This result set is useful for understanding systemic risk and supporting go/no-go decisions.
+
+- **Result Set #3 – Multi-Plan Drill-Down**  
+  Explains *why* a regression may have occurred by exposing plan-level behavior for query groups with multiple execution plans.  
+  It helps identify plan dominance shifts, parameter sensitivity, and plan instability across compatibility levels.
+
+- **Result Set #4 – Dominant Plan Shape Comparison**  
+  Provides low-level diagnostic detail by comparing the dominant execution plan from LowerCL and HigherCL.  
+  This result set highlights operator-level differences, join strategy changes, memory grant behavior, and other plan-shape variations that often explain observed regressions.
+
 
 This layered output model allows engineers to move from high-level risk identification to low-level plan analysis without losing context, while keeping each result set focused, readable, and purpose-driven.
 
