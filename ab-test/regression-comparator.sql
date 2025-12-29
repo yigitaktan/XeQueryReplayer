@@ -49,7 +49,7 @@ DECLARE
     , @IncludeAdhoc bit                = 1                         -- 1 | 0
     , @IncludeSP bit                   = 1                         -- 1 | 0
     , @OnlyMultiPlan bit               = 0                         -- 1 | 0
-    , @PersistResults bit              = 1                         -- 1 | 0
+    , @PersistResults bit              = 0                         -- 1 | 0
     , @ResultsTable sysname            = N'dbo.RegressionResults';
 
 ----------------------------------------------------------------------------------------
@@ -79,7 +79,7 @@ IF @OnlyMultiPlan NOT IN (0,1)
     THROW 50007, 'Invalid @OnlyMultiPlan. Use 0 (everything) or 1 (only MULTI_PLAN).', 1;
 
 ----------------------------------------------------------------------------------------
--- Resolve compatibility levels for A/B, then map to Lower/Higher  (context-independent)
+-- Resolve compatibility levels for A/B, then map to Lower/Higher
 ----------------------------------------------------------------------------------------
 DECLARE
       @CL_A smallint = NULL
@@ -191,7 +191,6 @@ SELECT
       @DbName AS SourceDb
     , CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END AS QueryType
     , CASE WHEN q.object_id > 0 THEN sch.name + ''.'' + obj.name ELSE NULL END AS ObjName
-
     , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
           CASE
               WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
@@ -199,17 +198,13 @@ SELECT
               ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
           END
       )) AS GroupKeyHash
-
     , q.query_hash
     , qt.query_sql_text AS QueryTextSample
     , LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' '')))) AS NormalizedTextSample
-
     , MIN(q.query_id) AS QueryIdMin
     , MAX(q.query_id) AS QueryIdMax
-
     , COUNT(DISTINCT p.plan_id) AS PlanCount
     , SUM(rs.count_executions) AS ExecCount
-
     , SUM(
         CASE
             WHEN @Metric = ''LogicalReads'' THEN CONVERT(decimal(38,12), rs.avg_logical_io_reads) * CONVERT(decimal(38,12), rs.count_executions)
@@ -217,7 +212,6 @@ SELECT
             ELSE                                 CONVERT(decimal(38,12), rs.avg_duration)        * CONVERT(decimal(38,12), rs.count_executions)
         END
       ) AS TotalMetric
-
     , CASE WHEN SUM(rs.count_executions) = 0 THEN 0
            ELSE
              SUM(
@@ -228,15 +222,12 @@ SELECT
                END
              ) / SUM(rs.count_executions)
       END AS AvgMetric
-
     , SUM(CONVERT(decimal(38,12), rs.avg_duration) * CONVERT(decimal(38,12), rs.count_executions)) AS TotalDuration
     , CASE WHEN SUM(rs.count_executions)=0 THEN 0
            ELSE SUM(CONVERT(decimal(38,12), rs.avg_duration) * CONVERT(decimal(38,12), rs.count_executions)) / SUM(rs.count_executions)
       END AS AvgDuration
-
     , MIN(rsi.start_time) AS IntervalStartMin
     , {{INTERVAL_END_EXPR}} AS IntervalEndMax
-
     , CASE WHEN {{HAS_END_TIME}} = 1 THEN ''WEIGHTED_TOTAL''
            ELSE ''WEIGHTED_TOTAL;INTERVAL_END_FALLBACK''
       END AS ConfidenceNote
@@ -261,8 +252,6 @@ OUTER APPLY
                 WHEN @StatementType = ''ALL'' THEN NULL
                 ELSE
                 (
-                    -- Detect first statement type from raw query text (fast heuristic)
-                    -- Handles direct DML at start AND CTE starting with WITH (by earliest keyword position)
                     SELECT TOP (1) v.Typ
                     FROM
                     (
@@ -401,42 +390,32 @@ SELECT
       COALESCE(b.QueryType, a.QueryType) AS QueryType
     , COALESCE(b.ObjName, a.ObjName)     AS ObjName
     , COALESCE(b.GroupKeyHash, a.GroupKeyHash) AS GroupKeyHash
-
     , a.QueryHash AS QueryHash_L
     , b.QueryHash AS QueryHash_H
-
     , CASE WHEN a.QueryIdMin IS NULL THEN NULL
            ELSE CAST(a.QueryIdMin AS varchar(30)) + '-' + CAST(a.QueryIdMax AS varchar(30))
       END AS QueryIdRange_L
     , CASE WHEN b.QueryIdMin IS NULL THEN NULL
            ELSE CAST(b.QueryIdMin AS varchar(30)) + '-' + CAST(b.QueryIdMax AS varchar(30))
       END AS QueryIdRange_H
-
     , ISNULL(a.PlanCount,0) AS PlanCount_L
     , ISNULL(b.PlanCount,0) AS PlanCount_H
-
     , ISNULL(a.ExecCount,0) AS ExecCount_L
     , ISNULL(b.ExecCount,0) AS ExecCount_H
-
     , ISNULL(a.TotalMetric,0) AS TotalMetric_L
     , ISNULL(b.TotalMetric,0) AS TotalMetric_H
-
     , ISNULL(a.AvgMetric,0) AS AvgMetric_L
     , ISNULL(b.AvgMetric,0) AS AvgMetric_H
-
     , ISNULL(a.TotalDuration,0) AS TotalDuration_L
     , ISNULL(b.TotalDuration,0) AS TotalDuration_H
-
     , ISNULL(a.AvgDuration,0) AS AvgDuration_L
     , ISNULL(b.AvgDuration,0) AS AvgDuration_H
-
     , CASE WHEN NULLIF(a.AvgMetric,0) IS NULL THEN NULL ELSE b.AvgMetric / NULLIF(a.AvgMetric,0) END AS RegressionRatio
     , (ISNULL(b.AvgMetric,0) - ISNULL(a.AvgMetric,0)) AS DeltaAvgMetric
     , CASE
           WHEN NULLIF(a.AvgMetric,0) IS NULL THEN NULL
           ELSE (ISNULL(b.AvgMetric,0) - ISNULL(a.AvgMetric,0)) * CONVERT(decimal(38,6), ISNULL(b.ExecCount,0))
       END AS ImpactScore
-
     , CAST(
           COALESCE(
               CASE WHEN ISNULL(a.ExecCount,0)=0 OR ISNULL(b.ExecCount,0)=0
@@ -454,7 +433,6 @@ SELECT
           COALESCE(a.ConfidenceNote + ';', '') +
           COALESCE(b.ConfidenceNote + ';', '')
       AS varchar(500)) AS ConfidenceFlags
-
     , COALESCE(b.QueryTextSample, a.QueryTextSample) AS QueryTextSample
 FROM a
 FULL OUTER JOIN b
@@ -493,10 +471,8 @@ CREATE TABLE #DominantPlans_All
     GroupKeyHash varbinary(32) NOT NULL,
     QueryType    varchar(10)   NOT NULL,
     ObjName      sysname       NULL,
-
     PlanId       bigint        NOT NULL,
     QueryId      bigint        NULL,
-
     ExecCount    bigint        NOT NULL,
     AvgMetric    decimal(38,6) NOT NULL
 );
@@ -515,12 +491,9 @@ DECLARE @domTmpl nvarchar(max) = N'
           )) AS GroupKeyHash
         , CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END AS QueryType
         , CASE WHEN q.object_id > 0 THEN sch.name + ''.'' + obj.name ELSE NULL END AS ObjName
-
         , p.plan_id AS PlanId
         , q.query_id AS QueryId
-
         , SUM(rs.count_executions) AS ExecCount
-
         , CASE WHEN SUM(rs.count_executions)=0 THEN 0
                ELSE
                  SUM(
@@ -680,10 +653,8 @@ SELECT
       COALESCE(b.GroupKeyHash, a.GroupKeyHash) AS GroupKeyHash
     , COALESCE(b.QueryType, a.QueryType)       AS QueryType
     , COALESCE(b.ObjName, a.ObjName)           AS ObjName
-
     , a.PlanId  AS DominantPlanId_L
     , b.PlanId  AS DominantPlanId_H
-
     , a.QueryId AS DominantQueryId_L
     , b.QueryId AS DominantQueryId_H
 FROM (SELECT * FROM #DominantPlans_All WHERE SourceDb = @DbLower) a
@@ -710,40 +681,32 @@ SELECT TOP (CASE WHEN @TopN IS NULL THEN 2147483647 ELSE @TopN END)
       f.QueryType
     , f.ObjName
     , CONVERT(varchar(66), f.GroupKeyHash, 1) AS GroupKeyHashHex
-
     , CONCAT(COALESCE(f.QueryIdRange_L,''?''), '' - '', COALESCE(f.QueryIdRange_H,''?'')) AS [QueryIdRange_L-H]
     , CONCAT(COALESCE(CONVERT(varchar(50), f.QueryHash_L, 1), ''?''), '' - '', COALESCE(CONVERT(varchar(50), f.QueryHash_H, 1), ''?'')) AS [QueryHashHex_L-H]
-
     , CONCAT(COALESCE(CONVERT(varchar(30), dp.DominantPlanId_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.DominantPlanId_H), ''?''))  AS [DominantPlanId_L-H]
     , CONCAT(COALESCE(CONVERT(varchar(30), dp.DominantQueryId_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.DominantQueryId_H), ''?'')) AS [DominantQueryId_L-H]
-
     , CONCAT(CONVERT(varchar(30), f.PlanCount_L), '' - '', CONVERT(varchar(30), f.PlanCount_H)) AS [PlanCount_L-H]
     , CONCAT(CONVERT(varchar(30), f.ExecCount_L), '' - '', CONVERT(varchar(30), f.ExecCount_H)) AS [ExecCount_L-H]
-
     , CONCAT(
           CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.TotalMetric_L, 2))),
           '' - '',
           CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.TotalMetric_H, 2)))
       ) AS ' + QUOTENAME('Total' + @Metric + '_L-H') + N'
-
     , CONCAT(
           CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.AvgMetric_L, 2))),
           '' - '',
           CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.AvgMetric_H, 2)))
       ) AS ' + QUOTENAME('Avg' + @Metric + '_L-H') + N'
-
     , CONCAT(
           CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.TotalDuration_L, 2))),
           '' - '',
           CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.TotalDuration_H, 2)))
       ) AS [TotalDuration_L-H]
-
     , CONCAT(
           CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.AvgDuration_L, 2))),
           '' - '',
           CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.AvgDuration_H, 2)))
       ) AS [AvgDuration_L-H]
-
     , CONVERT(decimal(19,2), ROUND(f.RegressionRatio, 2)) AS RegressionRatio
     , CONVERT(decimal(38,2), ROUND(f.DeltaAvgMetric, 2))  AS DeltaAvgMetric
     , CONVERT(decimal(38,2), ROUND(f.ImpactScore, 2))     AS ImpactScore
@@ -763,7 +726,7 @@ EXEC sp_executesql
     @TopN=@TopN, @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio, @OnlyMultiPlan=@OnlyMultiPlan;
 
 ----------------------------------------------------------------------------------------
--- Resultset #2: Summary (2 decimals on decimal aggregates)
+-- Resultset #2: Summary
 ----------------------------------------------------------------------------------------
 ;WITH filtered AS
 (
@@ -863,12 +826,9 @@ BEGIN
                   ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
               END
           )) AS GroupKeyHash
-
         , p.plan_id AS PlanId
         , q.query_id AS QueryId
-
         , SUM(rs.count_executions) AS ExecCount
-
         , SUM(
             CASE
                 WHEN @Metric = ''LogicalReads'' THEN CONVERT(decimal(38,12), rs.avg_logical_io_reads) * CONVERT(decimal(38,12), rs.count_executions)
@@ -876,7 +836,6 @@ BEGIN
                 ELSE                                 CONVERT(decimal(38,12), rs.avg_duration)        * CONVERT(decimal(38,12), rs.count_executions)
             END
           ) AS TotalMetric
-
         , CASE WHEN SUM(rs.count_executions)=0 THEN 0
                ELSE
                  SUM(
@@ -887,15 +846,12 @@ BEGIN
                    END
                  ) / SUM(rs.count_executions)
           END AS AvgMetric
-
         , SUM(CONVERT(decimal(38,12), rs.avg_duration) * CONVERT(decimal(38,12), rs.count_executions)) AS TotalDuration
         , CASE WHEN SUM(rs.count_executions)=0 THEN 0
                ELSE SUM(CONVERT(decimal(38,12), rs.avg_duration) * CONVERT(decimal(38,12), rs.count_executions)) / SUM(rs.count_executions)
           END AS AvgDuration
-
         , MIN(rsi.start_time) AS IntervalStartMin
         , {{INTERVAL_END_EXPR}} AS IntervalEndMax
-
         , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max), CONVERT(nvarchar(max), p.query_plan))) AS PlanXmlHash
     FROM {{DB}}.sys.query_store_query q
     JOIN {{DB}}.sys.query_store_plan p
@@ -1018,7 +974,7 @@ BEGIN
         @DbName=@DbHigher, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
     ----------------------------------------------------------------------------------------
-    -- Resultset #3: Plan drilldown - 2 decimals for decimal columns
+    -- Resultset #3: Plan drilldown
     ----------------------------------------------------------------------------------------
     ;WITH ranked AS
     (
@@ -1073,7 +1029,7 @@ BEGIN
         , RankByExecCount;
 
     ----------------------------------------------------------------------------------------
-    -- Resultset #4: Dominant plan XML diff (SIMPLIFIED) + 2 decimals + ' - ' separator
+    -- Resultset #4: Dominant plan XML
     ----------------------------------------------------------------------------------------
     IF OBJECT_ID('tempdb..#DominantPlans') IS NOT NULL DROP TABLE #DominantPlans;
     CREATE TABLE #DominantPlans
@@ -1121,12 +1077,10 @@ BEGIN
         GroupKeyHash  varbinary(32) NOT NULL,
         QueryType     varchar(10)   NOT NULL,
         ObjName       sysname       NULL,
-
         PlanId_L      bigint        NULL,
         QueryId_L     bigint        NULL,
         Exec_L        bigint        NULL,
         AvgM_L        decimal(38,6) NULL,
-
         PlanId_H      bigint        NULL,
         QueryId_H     bigint        NULL,
         Exec_H        bigint        NULL,
@@ -1138,12 +1092,10 @@ BEGIN
           COALESCE(b.GroupKeyHash, a.GroupKeyHash) AS GroupKeyHash
         , COALESCE(b.QueryType, a.QueryType)       AS QueryType
         , COALESCE(b.ObjName, a.ObjName)           AS ObjName
-
         , a.PlanId    AS PlanId_L
         , a.QueryId   AS QueryId_L
         , a.ExecCount AS Exec_L
         , a.AvgMetric AS AvgM_L
-
         , b.PlanId    AS PlanId_H
         , b.QueryId   AS QueryId_H
         , b.ExecCount AS Exec_H
@@ -1253,16 +1205,13 @@ BEGIN
         , CASE WHEN x.QueryPlanText IS NULL THEN NULL
                ELSE HASHBYTES('SHA2_256', CONVERT(varbinary(max), x.QueryPlanText))
           END AS PlanXmlHash
-
         , v.IndexSeekCount
         , v.IndexScanCount
         , v.TableScanCount
-
         , v.HasHashJoin
         , v.HasMergeJoin
         , v.HasNestedLoops
         , v.HasParallelism
-
         , v.GrantedMemoryKB
         , v.HasSpillToTempDb
         , v.HasMissingIndex
@@ -1327,16 +1276,13 @@ BEGIN
           c.QueryType
         , c.ObjName
         , CONVERT(varchar(66), c.GroupKeyHash, 1) AS GroupKeyHashHex
-
         , CONVERT(decimal(38,2), ROUND(c.ImpactScore, 2))     AS ImpactScore
         , CONVERT(decimal(19,2), ROUND(c.RegressionRatio, 2)) AS RegressionRatio
-
         , CONCAT(COALESCE(CONVERT(varchar(30), c.ExecCount_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), c.ExecCount_H), ''?'')) AS [ExecCount_L-H]
         , CONCAT(
               COALESCE(CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(c.AvgMetric_L, 2))), ''?''), '' - '',
               COALESCE(CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(c.AvgMetric_H, 2))), ''?'')
           ) AS [AvgMetric_L-H]
-
         , CONCAT(COALESCE(CONVERT(varchar(30), dp.PlanId_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.PlanId_H), ''?'')) AS [DominantPlanId_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(30), dp.QueryId_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.QueryId_H), ''?'')) AS [DominantQueryId_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(30), dp.Exec_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.Exec_H), ''?'')) AS [DominantPlanExec_L-H]
@@ -1344,26 +1290,21 @@ BEGIN
               COALESCE(CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(dp.AvgM_L, 2))), ''?''), '' - '',
               COALESCE(CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(dp.AvgM_H, 2))), ''?'')
           ) AS [DominantPlanAvgMetric_L-H]
-
         , CONCAT(
             COALESCE(CONVERT(varchar(66), pL.PlanXmlHash, 1), ''?''),
             '' - '',
             COALESCE(CONVERT(varchar(66), pH.PlanXmlHash, 1), ''?'')
           ) AS [PlanXmlHashHex_L-H]
-
         , CONCAT(COALESCE(CONVERT(varchar(20), pL.IndexSeekCount), ''?''), '' - '', COALESCE(CONVERT(varchar(20), pH.IndexSeekCount), ''?'')) AS [IndexSeekCount_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(20), pL.IndexScanCount), ''?''), '' - '', COALESCE(CONVERT(varchar(20), pH.IndexScanCount), ''?'')) AS [IndexScanCount_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(20), pL.TableScanCount), ''?''), '' - '', COALESCE(CONVERT(varchar(20), pH.TableScanCount), ''?'')) AS [TableScanCount_L-H]
-
         , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasHashJoin),    ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasHashJoin),    ''?'')) AS [HasHashJoin_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasMergeJoin),   ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasMergeJoin),   ''?'')) AS [HasMergeJoin_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasNestedLoops), ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasNestedLoops), ''?'')) AS [HasNestedLoops_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasParallelism), ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasParallelism), ''?'')) AS [HasParallelism_L-H]
-
         , CONCAT(COALESCE(CONVERT(varchar(30), pL.GrantedMemoryKB), ''?''), '' - '', COALESCE(CONVERT(varchar(30), pH.GrantedMemoryKB), ''?'')) AS [GrantedMemoryKB_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasSpillToTempDb), ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasSpillToTempDb), ''?'')) AS [SpillToTempDb_L-H]
         , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasMissingIndex),  ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasMissingIndex),  ''?'')) AS [MissingIndex_L-H]
-
         , CONCAT(
               CASE WHEN pL.PlanXmlHash IS NOT NULL AND pH.PlanXmlHash IS NOT NULL AND pL.PlanXmlHash <> pH.PlanXmlHash THEN ''PLAN_SHAPE_CHANGED;'' ELSE '''' END,
               CASE WHEN ISNULL(pL.HasHashJoin,0)    <> ISNULL(pH.HasHashJoin,0)    THEN ''JOIN_HASH_CHANGED;'' ELSE '''' END,
@@ -1377,7 +1318,6 @@ BEGIN
               CASE WHEN ISNULL(pL.HasMissingIndex,0) <> ISNULL(pH.HasMissingIndex,0) THEN ''MISSING_INDEX_CHANGED;'' ELSE '''' END,
               CASE WHEN ISNULL(pL.GrantedMemoryKB,-1) <> ISNULL(pH.GrantedMemoryKB,-1) THEN ''GRANT_CHANGED;'' ELSE '''' END
           ) AS DiffFlags
-
         , c.QueryTextSample
         , pL.QueryPlanXml AS ' + QUOTENAME('PlanXml_' + @LabelLower) + N'
         , pH.QueryPlanXml AS ' + QUOTENAME('PlanXml_' + @LabelHigher) + N'
@@ -1432,12 +1372,10 @@ BEGIN
         , CAST(c.QueryType  AS varchar(10))      AS QueryType
         , CAST(c.ObjName    AS sysname)          AS ObjName
         , CAST(c.GroupKeyHash AS varbinary(32))  AS GroupKeyHash
-
         , CAST(dp.DominantPlanId_L  AS bigint)   AS DominantPlanId_L
         , CAST(dp.DominantPlanId_H  AS bigint)   AS DominantPlanId_H
         , CAST(dp.DominantQueryId_L AS bigint)   AS DominantQueryId_L
         , CAST(dp.DominantQueryId_H AS bigint)   AS DominantQueryId_H
-
         , CAST(c.PlanCount_L AS int)             AS PlanCount_L
         , CAST(c.PlanCount_H AS int)             AS PlanCount_H
         , CAST(c.ExecCount_L AS bigint)          AS ExecCount_L
@@ -1464,10 +1402,8 @@ BEGIN
         LowerDb, HigherDb, LowerCL, HigherCL,
         Metric, GroupBy,
         QueryType, ObjName, GroupKeyHash,
-
         DominantPlanId_L, DominantPlanId_H,
         DominantQueryId_L, DominantQueryId_H,
-
         PlanCount_L, PlanCount_H,
         ExecCount_L, ExecCount_H,
         TotalMetric_L, TotalMetric_H,
@@ -1480,10 +1416,8 @@ BEGIN
         , @DbLower, @DbHigher, CONVERT(sysname, @LowerCL), CONVERT(sysname, @HigherCL)
         , @Metric, @GroupBy
         , c.QueryType, c.ObjName, c.GroupKeyHash
-
         , dp.DominantPlanId_L, dp.DominantPlanId_H
         , dp.DominantQueryId_L, dp.DominantQueryId_H
-
         , c.PlanCount_L, c.PlanCount_H
         , c.ExecCount_L, c.ExecCount_H
         , c.TotalMetric_L, c.TotalMetric_H
