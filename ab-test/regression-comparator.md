@@ -27,7 +27,7 @@ This quick start is designed to get you from "two Query Store datasets" to a ran
 
 Before running the script, ensure you have:
 
-- Two databases containing Query Store data for the **same captured workload**, replayed under:
+- Two databases containing Query Store data for the same captured workload, replayed under:
   - **LowerCL** baseline (e.g., CL 120)
   - **HigherCL** candidate (e.g., CL 170)
 - Query Store is enabled and has collected runtime stats on both sides
@@ -141,7 +141,7 @@ These two databases are treated as independent evidence sources. The script neve
 > - Use the widest reasonable window that cleanly maps to your replay period.
 > - Avoid overly tight windows unless you are certain about Query Store interval boundaries.
 
-### Metric Selection
+### Metric Configuration
 
 - `@Metric`  
   Chooses the single metric used for all comparisons, ratios, and impact calculations.
