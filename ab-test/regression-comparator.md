@@ -3,7 +3,7 @@
 * **[Quick Start](#quick-start)**
 * **[Script Parameters and Execution Model](#script-parameters-and-execution-model)**
 * **[How Queries Are Grouped](#how-queries-are-grouped)**
-* **[Metric Selection](#metric-selection-1)**
+* **[Metric Selection](#metric-selection)**
 * **[Metric Aggregation and Weighting Model](#metric-aggregation-and-weighting-model)**
 * **[Regression Detection Methodology](#regression-detection-methodology)**
 * **[Result Sets Overview](#result-sets-overview)**
@@ -22,6 +22,10 @@
 > You can access and download the full script from here: [Query Store CL Regression Comparator](./regression-comparator.sql)
 
 This quick start is designed to get you from "two Query Store datasets" to a ranked regression list in a few minutes.
+
+> Throughout this document:
+> - **LowerCL** refers to the database running at the lower SQL Server compatibility level (baseline).
+> - **HigherCL** refers to the database running at the higher SQL Server compatibility level (candidate).
 
 ### What you need
 
@@ -320,7 +324,7 @@ Without weighted aggregation, A/B analysis can easily misrepresent reality, espe
 
 The script intentionally does not treat every metric increase as a problem. Instead, it is designed to answer a more important question:
 
-**“Does this change materially hurt the system?”**
+**Does this change materially hurt the system?**
 
 For that reason:
 
@@ -329,7 +333,7 @@ For that reason:
 
 A query with a high ratio but low execution count is often irrelevant. Conversely, a moderate ratio applied to a high-frequency query can represent a severe regression.
 
-This is why the default analysis workflow prioritizes **ImpactScore over ratios**, and why filtering thresholds are designed to reduce noise rather than hide risk.
+This is why the default analysis workflow prioritizes ImpactScore over ratios, and why filtering thresholds are designed to reduce noise rather than hide risk.
 
 
 ## Result Sets Overview
@@ -341,7 +345,7 @@ This is the main entry point for analysis.
 
 It lists only queries where:
 
-- The metric is worse in higher CL than lower CL
+- The metric is worse in HigherCL than LowerCL
 - The regression passes optional execution count and ratio thresholds
 
 Key Columns and How to Read Them:
