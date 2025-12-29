@@ -1,4 +1,4 @@
-## Query Store CL Regression Comparator script
+# Query Store CL Regression Comparator
 The Query Store CL Regression Comparator script performs the following actions:
 
 - Aggregates Query Store runtime statistics separately for each database
@@ -18,15 +18,6 @@ The script is intentionally designed to be:
 
 
 * **[Script Parameters and Execution Model](#script-parameters-and-execution-model)**
-  * **[Database Inputs](#database-inputs)**
-  * **[Scope and Noise Control](#scope-and-noise-control)**
-  * **[Time Window Filtering](#time-window-filtering)**
-  * **[Metric Selection](#metric-selection)**
-  * **[Query Grouping Strategy](#query-grouping-strategy)**
-  * **[Statement-Type Filtering](#statement-type-filtering)**
-  * **[Workload-Type Inclusion (Ad-hoc vs Stored Procedures)](#workload-type-inclusion-ad-hoc-vs-stored-procedures)**
-  * **[Multi-Plan Focus Mode](#multi-plan-focus-mode)**
-  * **[Persistence and Historical Tracking](#persistence-and-historical-tracking)**
 * **[How Queries Are Grouped](#how-queries-are-grouped)**
 * **[Metric Selection](#metric-selection-1)**
 * **[Metric Aggregation and Weighting Model](#metric-aggregation-and-weighting-model)**
@@ -38,16 +29,6 @@ The script is intentionally designed to be:
 * **[Result Set #4 - Dominant Plan Shape Comparison](#result-set-4---dominant-plan-shape-comparison)**
 * **[ConfidenceFlags Explained](#confidenceflags-explained)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
-  * **[Step 1 - Start with Result Set #1 (Regression Overview)](#step-1---start-with-result-set-1-regression-overview)**
-  * **[Step 2 - Validate Execution Volume and Confidence Signals](#step-2---validate-execution-volume-and-confidence-signals)**
-  * **[Step 3 - Identify Plan Instability (MULTI_PLAN Detection)](#step-3---identify-plan-instability-multi_plan-detection)**
-  * **[Step 4 - Drill Down Using Result Set #3 (Multi-Plan Details)](#step-4---drill-down-using-result-set-3-multi-plan-details)**
-  * **[Step 5 - Compare Dominant Plan Shapes (Result Set #4)](#step-5---compare-dominant-plan-shapes-result-set-4)**
-  * **[Step 6 - Correlate with Metric Type](#step-6---correlate-with-metric-type)**
-  * **[Step 7 - Eliminate Common False Positives](#step-7---eliminate-common-false-positives)**
-  * **[Step 8 - Decide on Mitigation Strategy](#step-8---decide-on-mitigation-strategy)**
-  * **[Step 9 - Re-Validate After Mitigation](#step-9---re-validate-after-mitigation)**
-  * **[Step 10 - Document and Persist Results](#step-10---document-and-persist-results)**
 * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
 * **[Analytical Deliverables and Decision Readiness](#analytical-deliverables-and-decision-readiness)**
 
