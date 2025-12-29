@@ -66,10 +66,10 @@ These two databases are treated as independent evidence sources. The script neve
   - If `NULL`, the script does not enforce a minimum ratio and will output everything that worsened (useful for broad discovery).
   - If set (e.g., `1.25`), only groups that are at least **25% worse** in HigherCL will be included in the primary regression result set.
 
-  **Practical guidance**:
-  - Start with something like `1.25` for initial triage.
-  - Move to `1.10` if you need to catch smaller regressions with high impact.
-  - Move to `1.50+` when you only care about “obviously bad” regressions.
+> [!TIP]
+> - Start with something like `1.25` for initial triage.
+> - Move to `1.10` if you need to catch smaller regressions with high impact.
+> - Move to `1.50+` when you only care about “obviously bad” regressions.
 
 - `@TopN`  
   Limits the output to the top N rows after sorting by impact or ranking logic.  
@@ -79,8 +79,8 @@ These two databases are treated as independent evidence sources. The script neve
   - If `NULL`, no limit is applied.
   - If set (e.g., `100`), returns the top 100 regressions based on the script’s ranking (typically ImpactScore descending).
 
-  **Practical guidance**:
-  - Use `@TopN` for iterative tuning cycles where you only want to focus on the worst offenders first.
+> [!TIP]
+> Use `@TopN` for iterative tuning cycles where you only want to focus on the worst offenders first.
 
 ### Time Window Filtering
 
@@ -97,9 +97,9 @@ These two databases are treated as independent evidence sources. The script neve
   **Important note (engine-version nuance)**:
   Some SQL Server versions expose limited interval end-time metadata in Query Store. In those cases, the script may fall back to using the maximum observed `start_time` for interval bounding, and it will flag this via `INTERVAL_END_FALLBACK`. This does not invalidate results, but it can slightly reduce temporal precision when slicing narrow windows.
 
-  **Practical guidance**:
-  - Use the widest reasonable window that cleanly maps to your replay period.
-  - Avoid overly tight windows unless you are certain about Query Store interval boundaries.
+> [!TIP]
+> - Use the widest reasonable window that cleanly maps to your replay period.
+> - Avoid overly tight windows unless you are certain about Query Store interval boundaries.
 
 ### Metric Selection
 
@@ -150,8 +150,8 @@ These two databases are treated as independent evidence sources. The script neve
   - Use `SELECT` when you only care about read-path regressions and want to reduce noise from write-heavy replay behavior.
   - Use `INSERT/UPDATE/DELETE` to isolate write regressions or investigate plan regressions driven by DML patterns.
 
-  **Note**:
-  Classification is typically derived from Query Store query text inspection logic. For mixed batches or complex statements, categorization may not be perfect; treat this as a pragmatic filter, not a formal parser.
+> [!NOTE]
+> Classification is typically derived from Query Store query text inspection logic. For mixed batches or complex statements, categorization may not be perfect; treat this as a pragmatic filter, not a formal parser.
 
 ### Workload-Type Inclusion (Ad-hoc vs Stored Procedures)
 
@@ -174,8 +174,8 @@ These two databases are treated as independent evidence sources. The script neve
   - Only ad-hoc: `@IncludeAdhoc = 1`, `@IncludeSP = 0`
   - Only SP: `@IncludeAdhoc = 0`, `@IncludeSP = 1`
 
-  **Practical guidance**:
-  - If your tuning process is split (e.g., first stabilize SPs, then review ad-hoc), these toggles let you isolate each category without changing the rest of the script.
+> [!TIP]
+> If your tuning process is split (e.g., first stabilize SPs, then review ad-hoc), these toggles let you isolate each category without changing the rest of the script.
 
 ### Multi-Plan Focus Mode
 
@@ -210,9 +210,9 @@ These two databases are treated as independent evidence sources. The script neve
   The fully qualified target table name used when `@PersistResults = 1`.  
   Example: `dbo.QueryStoreCLRegressionResults`
 
-  **Operational guidance**:
-  - Keep this table in a dedicated utility database if multiple teams use it.
-  - Consider adding a run identifier (timestamp, run label, capture window) if the script doesn’t already store one, so multiple runs can coexist cleanly.
+> [!TIP]
+> - Keep this table in a dedicated utility database if multiple teams use it.
+> - Consider adding a run identifier (timestamp, run label, capture window) if the script doesn’t already store one, so multiple runs can coexist cleanly.
 
 
 ## How Queries Are Grouped
