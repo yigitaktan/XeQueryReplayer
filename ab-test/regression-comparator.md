@@ -433,7 +433,7 @@ Why:
 - ImpactScore reflects real workload impact, not just relative degradation
 - A query that regresses slightly but runs thousands of times is usually more important than a query that regresses heavily but runs rarely
 
-> NOTE:  
+> [!NOTE]
 > A high `RegressionRatio` without a correspondingly high `ImpactScore` is often operationally insignificant.
 
 ---
