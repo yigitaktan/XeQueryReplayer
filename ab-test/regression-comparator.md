@@ -49,6 +49,35 @@ The comparison metric is controlled by the @Metric parameter:
 
 All comparisons, ratios, and impact calculations are derived consistently from this single metric, ensuring analytical integrity.
 
+
+## Metric Aggregation and Weighting Model
+
+Query Store exposes runtime statistics as averages per plan and interval. To produce accurate, workload-representative comparisons, the script does not rely on simple averages.
+
+Instead, all metrics are aggregated using **execution-count–weighted math**:
+
+- **TotalMetric**  
+  `SUM(avg_metric × execution_count)`
+
+- **AvgMetric**  
+  `TotalMetric / TotalExecutionCount`
+
+This ensures that:
+
+- Frequently executed plans contribute proportionally more to results
+- Rare executions do not skew averages
+- Comparisons reflect real system impact, not statistical artifacts
+
+This weighting model is applied consistently across:
+
+- LowerCL and HigherCL
+- Group-level aggregation
+- Plan-level drill-down
+- ImpactScore calculation
+
+Without weighted aggregation, A/B analysis can easily misrepresent reality, especially in workloads with uneven execution distributions.
+
+
 ## Result Sets Overview
 The script produces multiple result sets, each serving a specific analytical purpose.
 
