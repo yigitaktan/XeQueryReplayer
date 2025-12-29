@@ -1,5 +1,5 @@
 /*======================================================================================
-Query Store CL Regression Comparator (LowerCL vs HigherCL)
+Query Store CL Regression Comparator
 ======================================================================================*/
 SET NOCOUNT ON;
 
@@ -7,19 +7,21 @@ SET NOCOUNT ON;
 -- Parameters
 ----------------------------------------------------------------------------------------
 DECLARE
-      @DbA sysname = N'DemoDB_cL120'           -- input A
-    , @DbB sysname = N'DemoDB_cL170'           -- input B
-    , @MinExecCount bigint = NULL              -- e.g. 50
-    , @MinRegressionRatio decimal(9,4) = NULL  -- e.g. 1.25
-    , @TopN int = NULL                         -- e.g. 100
-    , @StartTime datetime2(0) = NULL           -- e.g. '2025-12-24T00:00:00'
-    , @EndTime   datetime2(0) = NULL           -- e.g. '2025-12-24T23:59:59'
-    , @Metric sysname = N'LogicalReads'        -- LogicalReads | CPU | Duration
-    , @IncludeAdhoc bit = 1                    -- 1 | 0
-    , @IncludeSP bit = 1                       -- 1 | 0
-    , @GroupBy sysname = N'QueryHash'          -- QueryHash | QueryText | NormalizedText
-    , @PersistResults bit = 0                  -- 1 | 0
-    , @ResultsTable sysname = N'dbo.QueryStoreCLRegressionResults';
+      @DbA sysname                     = N'DemoDB_CL120'           -- input A
+    , @DbB sysname                     = N'DemoDB_CL170'           -- input B
+    , @MinExecCount bigint             = NULL                      -- e.g. 50
+    , @MinRegressionRatio decimal(9,4) = NULL                      -- e.g. 1.25
+    , @TopN int                        = NULL                      -- e.g. 100
+    , @StartTime datetime2(0)          = NULL                      -- e.g. '2025-12-25 21:48:56'
+    , @EndTime   datetime2(0)          = NULL                      -- e.g. '2025-12-25 22:00:00'
+    , @Metric sysname                  = N'LogicalReads'           -- LogicalReads | CPU | Duration
+    , @GroupBy sysname                 = N'QueryHash'              -- QueryHash | QueryText | NormalizedText
+    , @StatementType varchar(10)       = N'ALL'                    -- ALL | SELECT | INSERT | UPDATE | DELETE
+    , @IncludeAdhoc bit                = 1                         -- 1 | 0
+    , @IncludeSP bit                   = 1                         -- 1 | 0
+    , @OnlyMultiPlan bit               = 0                         -- 1 | 0
+    , @PersistResults bit              = 1                         -- 1 | 0
+    , @ResultsTable sysname            = N'dbo.QueryStoreCLRegressionResults';
 
 ----------------------------------------------------------------------------------------
 -- Validation
@@ -35,6 +37,17 @@ IF @StartTime IS NOT NULL AND @EndTime IS NOT NULL AND @EndTime <= @StartTime
 
 IF PARSENAME(@ResultsTable, 2) IS NULL OR PARSENAME(@ResultsTable, 1) IS NULL
     THROW 50004, '@ResultsTable must be two-part name like dbo.TableName.', 1;
+
+IF @StatementType IS NULL
+    THROW 50005, 'Invalid @StatementType. Use ALL, SELECT, INSERT, UPDATE, or DELETE. (NULL is not allowed)', 1;
+
+SET @StatementType = UPPER(LTRIM(RTRIM(@StatementType)));
+
+IF @StatementType NOT IN ('ALL','SELECT','INSERT','UPDATE','DELETE')
+    THROW 50006, 'Invalid @StatementType. Use ALL, SELECT, INSERT, UPDATE, or DELETE.', 1;
+
+IF @OnlyMultiPlan NOT IN (0,1)
+    THROW 50007, 'Invalid @OnlyMultiPlan. Use 0 (everything) or 1 (only MULTI_PLAN).', 1;
 
 ----------------------------------------------------------------------------------------
 -- Resolve compatibility levels for A/B, then map to Lower/Higher  (context-independent)
@@ -84,30 +97,23 @@ SET @LabelHigher = CONCAT(N'CL', @HigherCL);
 IF OBJECT_ID('tempdb..#QS_Agg') IS NOT NULL DROP TABLE #QS_Agg;
 CREATE TABLE #QS_Agg
 (
-    SourceDb              sysname        NOT NULL,   -- will store @DbLower or @DbHigher
-    QueryType             varchar(10)    NOT NULL,   -- SP | Adhoc
-    ObjName               sysname        NULL,       -- only for SP/object queries
-
-    GroupKeyHash          varbinary(32)  NOT NULL,   -- join key
+    SourceDb              sysname        NOT NULL,
+    QueryType             varchar(10)    NOT NULL,
+    ObjName               sysname        NULL,
+    GroupKeyHash          varbinary(32)  NOT NULL,
     QueryHash             binary(8)      NULL,
     QueryTextSample       nvarchar(max)  NULL,
     NormalizedTextSample  nvarchar(max)  NULL,
-
     QueryIdMin            bigint         NULL,
     QueryIdMax            bigint         NULL,
-
     PlanCount             int            NOT NULL,
     ExecCount             bigint         NOT NULL,
-
     TotalMetric           decimal(38,6)  NOT NULL,
     AvgMetric             decimal(38,6)  NOT NULL,
-
     TotalDuration         decimal(38,6)  NOT NULL,
     AvgDuration           decimal(38,6)  NOT NULL,
-
     IntervalStartMin      datetime2(0)   NULL,
     IntervalEndMax        datetime2(0)   NULL,
-
     ConfidenceNote        varchar(50)    NOT NULL
 );
 
@@ -218,6 +224,60 @@ LEFT JOIN {{DB}}.sys.objects obj
   ON obj.object_id = q.object_id
 LEFT JOIN {{DB}}.sys.schemas sch
   ON sch.schema_id = obj.schema_id
+OUTER APPLY
+(
+    SELECT
+        DetectedType =
+            CASE
+                WHEN @StatementType = ''ALL'' THEN NULL
+                ELSE
+                (
+                    -- Detect first statement type from raw query text (fast heuristic)
+                    -- Handles direct DML at start AND CTE starting with WITH (by earliest keyword position)
+                    SELECT TOP (1) v.Typ
+                    FROM
+                    (
+                        SELECT
+                              Typ = ''SELECT''
+                            , Pos =
+                                  CASE
+                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''SELECT%'' THEN 1
+                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%SELECT%'', UPPER(qt.query_sql_text)),0)
+                                      ELSE NULL
+                                  END
+                        UNION ALL
+                        SELECT
+                              Typ = ''INSERT''
+                            , Pos =
+                                  CASE
+                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''INSERT%'' THEN 1
+                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%INSERT%'', UPPER(qt.query_sql_text)),0)
+                                      ELSE NULL
+                                  END
+                        UNION ALL
+                        SELECT
+                              Typ = ''UPDATE''
+                            , Pos =
+                                  CASE
+                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''UPDATE%'' THEN 1
+                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%UPDATE%'', UPPER(qt.query_sql_text)),0)
+                                      ELSE NULL
+                                  END
+                        UNION ALL
+                        SELECT
+                              Typ = ''DELETE''
+                            , Pos =
+                                  CASE
+                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''DELETE%'' THEN 1
+                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%DELETE%'', UPPER(qt.query_sql_text)),0)
+                                      ELSE NULL
+                                  END
+                    ) v
+                    WHERE v.Pos IS NOT NULL
+                    ORDER BY v.Pos ASC
+                )
+            END
+) st
 WHERE 1=1
   AND (
         (@IncludeSP = 1 AND q.object_id > 0)
@@ -225,6 +285,10 @@ WHERE 1=1
   )
   AND (@StartTime IS NULL OR rsi.start_time >= @StartTime)
   AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
+  AND (
+        @StatementType = ''ALL''
+        OR st.DetectedType = @StatementType
+      )
 GROUP BY
       q.object_id, sch.name, obj.name
     , q.query_hash
@@ -261,13 +325,13 @@ DECLARE @sqlH nvarchar(max) =
 
 EXEC sp_executesql
     @sqlL,
-    N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0)',
-    @DbName=@DbLower, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime;
+    N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+    @DbName=@DbLower, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
 EXEC sp_executesql
     @sqlH,
-    N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0)',
-    @DbName=@DbHigher, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime;
+    N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+    @DbName=@DbHigher, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
 ----------------------------------------------------------------------------------------
 -- Compare (internal columns use _L/_H)
@@ -275,38 +339,28 @@ EXEC sp_executesql
 IF OBJECT_ID('tempdb..#Compare') IS NOT NULL DROP TABLE #Compare;
 CREATE TABLE #Compare
 (
-    QueryType            varchar(10)   NOT NULL,
-    ObjName              sysname       NULL,
+    QueryType            varchar(10) NOT NULL,
+    ObjName              sysname NULL,
     GroupKeyHash         varbinary(32) NOT NULL,
-
     QueryHash_L          binary(8) NULL,
     QueryHash_H          binary(8) NULL,
-
     QueryIdRange_L       varchar(60) NULL,
     QueryIdRange_H       varchar(60) NULL,
-
     PlanCount_L          int NOT NULL,
     PlanCount_H          int NOT NULL,
-
     ExecCount_L          bigint NOT NULL,
     ExecCount_H          bigint NOT NULL,
-
     TotalMetric_L        decimal(38,6) NOT NULL,
     TotalMetric_H        decimal(38,6) NOT NULL,
-
     AvgMetric_L          decimal(38,6) NOT NULL,
     AvgMetric_H          decimal(38,6) NOT NULL,
-
     TotalDuration_L      decimal(38,6) NOT NULL,
     TotalDuration_H      decimal(38,6) NOT NULL,
-
     AvgDuration_L        decimal(38,6) NOT NULL,
     AvgDuration_H        decimal(38,6) NOT NULL,
-
-    RegressionRatio      decimal(19,6) NULL,    -- H / L
-    DeltaAvgMetric       decimal(38,6) NULL,    -- H - L
-    ImpactScore          decimal(38,6) NULL,    -- (H-L)*Exec_H
-
+    RegressionRatio      decimal(19,6) NULL,
+    DeltaAvgMetric       decimal(38,6) NULL,
+    ImpactScore          decimal(38,6) NULL,
     ConfidenceFlags      varchar(500) NULL,
     QueryTextSample      nvarchar(max) NULL
 );
@@ -380,7 +434,237 @@ FULL OUTER JOIN b
  AND ISNULL(a.ObjName,'')   = ISNULL(b.ObjName,'');
 
 ----------------------------------------------------------------------------------------
--- Resultset #1: Simplified output (ONLY new pair columns) + 2 decimals + ' - ' separator
+-- Build filtered group set and compute DominantPlanId/QueryId for Resultset#1 + Persist
+----------------------------------------------------------------------------------------
+IF OBJECT_ID('tempdb..#FilteredGroups') IS NOT NULL DROP TABLE #FilteredGroups;
+CREATE TABLE #FilteredGroups
+(
+    GroupKeyHash varbinary(32) NOT NULL,
+    QueryType    varchar(10)   NOT NULL,
+    ObjNameNorm  sysname       NOT NULL,
+    CONSTRAINT PK_FilteredGroups PRIMARY KEY (GroupKeyHash, QueryType, ObjNameNorm)
+);
+
+INSERT #FilteredGroups (GroupKeyHash, QueryType, ObjNameNorm)
+SELECT DISTINCT
+      c.GroupKeyHash
+    , c.QueryType
+    , ISNULL(c.ObjName,'') AS ObjNameNorm
+FROM #Compare c
+WHERE c.RegressionRatio IS NOT NULL
+  AND c.AvgMetric_H > c.AvgMetric_L
+  AND (@MinExecCount IS NULL OR (c.ExecCount_L >= @MinExecCount AND c.ExecCount_H >= @MinExecCount))
+  AND (@MinRegressionRatio IS NULL OR c.RegressionRatio >= @MinRegressionRatio)
+  AND (@OnlyMultiPlan = 0 OR c.ConfidenceFlags LIKE '%MULTI_PLAN%');
+
+IF OBJECT_ID('tempdb..#DominantPlans_All') IS NOT NULL DROP TABLE #DominantPlans_All;
+CREATE TABLE #DominantPlans_All
+(
+    SourceDb     sysname       NOT NULL,
+    GroupKeyHash varbinary(32) NOT NULL,
+    QueryType    varchar(10)   NOT NULL,
+    ObjName      sysname       NULL,
+
+    PlanId       bigint        NOT NULL,
+    QueryId      bigint        NULL,
+
+    ExecCount    bigint        NOT NULL,
+    AvgMetric    decimal(38,6) NOT NULL
+);
+
+DECLARE @domTmpl nvarchar(max) = N'
+;WITH planAgg AS
+(
+    SELECT
+          @DbName AS SourceDb
+        , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+              CASE
+                  WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                  WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
+                  ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
+              END
+          )) AS GroupKeyHash
+        , CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END AS QueryType
+        , CASE WHEN q.object_id > 0 THEN sch.name + ''.'' + obj.name ELSE NULL END AS ObjName
+
+        , p.plan_id AS PlanId
+        , q.query_id AS QueryId
+
+        , SUM(rs.count_executions) AS ExecCount
+
+        , CASE WHEN SUM(rs.count_executions)=0 THEN 0
+               ELSE
+                 SUM(
+                   CASE
+                       WHEN @Metric = ''LogicalReads'' THEN CONVERT(decimal(38,12), rs.avg_logical_io_reads) * CONVERT(decimal(38,12), rs.count_executions)
+                       WHEN @Metric = ''CPU''         THEN CONVERT(decimal(38,12), rs.avg_cpu_time)        * CONVERT(decimal(38,12), rs.count_executions)
+                       ELSE                                 CONVERT(decimal(38,12), rs.avg_duration)        * CONVERT(decimal(38,12), rs.count_executions)
+                   END
+                 ) / SUM(rs.count_executions)
+          END AS AvgMetric
+    FROM {{DB}}.sys.query_store_query q
+    JOIN {{DB}}.sys.query_store_plan p
+      ON p.query_id = q.query_id
+    JOIN {{DB}}.sys.query_store_runtime_stats rs
+      ON rs.plan_id = p.plan_id
+    JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
+      ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
+    JOIN {{DB}}.sys.query_store_query_text qt
+      ON qt.query_text_id = q.query_text_id
+    LEFT JOIN {{DB}}.sys.objects obj
+      ON obj.object_id = q.object_id
+    LEFT JOIN {{DB}}.sys.schemas sch
+      ON sch.schema_id = obj.schema_id
+    OUTER APPLY
+    (
+        SELECT
+            DetectedType =
+                CASE
+                    WHEN @StatementType = ''ALL'' THEN NULL
+                    ELSE
+                    (
+                        SELECT TOP (1) v.Typ
+                        FROM
+                        (
+                            SELECT Typ=''SELECT'',
+                                   Pos=CASE
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''SELECT%'' THEN 1
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%SELECT%'', UPPER(qt.query_sql_text)),0)
+                                            ELSE NULL
+                                       END
+                            UNION ALL
+                            SELECT Typ=''INSERT'',
+                                   Pos=CASE
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''INSERT%'' THEN 1
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%INSERT%'', UPPER(qt.query_sql_text)),0)
+                                            ELSE NULL
+                                       END
+                            UNION ALL
+                            SELECT Typ=''UPDATE'',
+                                   Pos=CASE
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''UPDATE%'' THEN 1
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%UPDATE%'', UPPER(qt.query_sql_text)),0)
+                                            ELSE NULL
+                                       END
+                            UNION ALL
+                            SELECT Typ=''DELETE'',
+                                   Pos=CASE
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''DELETE%'' THEN 1
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%DELETE%'', UPPER(qt.query_sql_text)),0)
+                                            ELSE NULL
+                                       END
+                        ) v
+                        WHERE v.Pos IS NOT NULL
+                        ORDER BY v.Pos ASC
+                    )
+                END
+    ) st
+    WHERE 1=1
+      AND (
+            (@IncludeSP = 1 AND q.object_id > 0)
+         OR (@IncludeAdhoc = 1 AND (q.object_id = 0 OR q.object_id IS NULL))
+      )
+      AND (@StartTime IS NULL OR rsi.start_time >= @StartTime)
+      AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
+      AND (
+            @StatementType = ''ALL''
+            OR st.DetectedType = @StatementType
+          )
+      AND EXISTS
+      (
+          SELECT 1
+          FROM #FilteredGroups fg
+          WHERE fg.GroupKeyHash = HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+                CASE
+                    WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                    WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
+                    ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
+                END
+          ))
+            AND fg.QueryType = CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END
+            AND fg.ObjNameNorm = ISNULL(CASE WHEN q.object_id > 0 THEN sch.name + ''.'' + obj.name ELSE NULL END, '''')
+      )
+    GROUP BY
+          q.object_id, sch.name, obj.name
+        , q.query_hash
+        , qt.query_sql_text
+        , CASE
+              WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+              WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
+              ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
+          END
+        , p.plan_id
+        , q.query_id
+),
+r AS
+(
+    SELECT
+          pa.SourceDb
+        , pa.GroupKeyHash
+        , pa.QueryType
+        , pa.ObjName
+        , pa.PlanId
+        , pa.QueryId
+        , pa.ExecCount
+        , pa.AvgMetric
+        , ROW_NUMBER() OVER
+          (
+            PARTITION BY pa.SourceDb, pa.GroupKeyHash, pa.QueryType, ISNULL(pa.ObjName,'''')
+            ORDER BY pa.ExecCount DESC, pa.AvgMetric DESC, pa.PlanId DESC
+          ) AS rn
+    FROM planAgg pa
+)
+INSERT INTO #DominantPlans_All (SourceDb, GroupKeyHash, QueryType, ObjName, PlanId, QueryId, ExecCount, AvgMetric)
+SELECT
+      SourceDb, GroupKeyHash, QueryType, ObjName, PlanId, QueryId, ExecCount, AvgMetric
+FROM r
+WHERE rn = 1;
+';
+
+DECLARE @domSqlL nvarchar(max) = REPLACE(@domTmpl, N'{{DB}}', QUOTENAME(@DbLower));
+DECLARE @domSqlH nvarchar(max) = REPLACE(@domTmpl, N'{{DB}}', QUOTENAME(@DbHigher));
+
+EXEC sp_executesql
+    @domSqlL,
+    N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+    @DbName=@DbLower, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
+
+EXEC sp_executesql
+    @domSqlH,
+    N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+    @DbName=@DbHigher, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
+
+IF OBJECT_ID('tempdb..#DomPairs_All') IS NOT NULL DROP TABLE #DomPairs_All;
+CREATE TABLE #DomPairs_All
+(
+    GroupKeyHash  varbinary(32) NOT NULL,
+    QueryType     varchar(10) NOT NULL,
+    ObjName       sysname NULL,
+    DominantPlanId_L  bigint NULL,
+    DominantPlanId_H  bigint NULL,
+    DominantQueryId_L bigint NULL,
+    DominantQueryId_H bigint NULL
+);
+
+INSERT #DomPairs_All
+SELECT
+      COALESCE(b.GroupKeyHash, a.GroupKeyHash) AS GroupKeyHash
+    , COALESCE(b.QueryType, a.QueryType)       AS QueryType
+    , COALESCE(b.ObjName, a.ObjName)           AS ObjName
+
+    , a.PlanId  AS DominantPlanId_L
+    , b.PlanId  AS DominantPlanId_H
+
+    , a.QueryId AS DominantQueryId_L
+    , b.QueryId AS DominantQueryId_H
+FROM (SELECT * FROM #DominantPlans_All WHERE SourceDb = @DbLower) a
+FULL OUTER JOIN (SELECT * FROM #DominantPlans_All WHERE SourceDb = @DbHigher) b
+  ON a.GroupKeyHash = b.GroupKeyHash
+ AND ISNULL(a.QueryType,'') = ISNULL(b.QueryType,'')
+ AND ISNULL(a.ObjName,'')   = ISNULL(b.ObjName,'');
+
+----------------------------------------------------------------------------------------
+-- Resultset #1: Simplified output + dominant columns + 2 decimals + ' - ' separator
 ----------------------------------------------------------------------------------------
 DECLARE @out1 nvarchar(max) = N'
 ;WITH filtered AS
@@ -391,55 +675,63 @@ DECLARE @out1 nvarchar(max) = N'
       AND AvgMetric_H > AvgMetric_L
       AND (@MinExecCount IS NULL OR (ExecCount_L >= @MinExecCount AND ExecCount_H >= @MinExecCount))
       AND (@MinRegressionRatio IS NULL OR RegressionRatio >= @MinRegressionRatio)
+      AND (@OnlyMultiPlan = 0 OR ConfidenceFlags LIKE ''%MULTI_PLAN%'')
 )
 SELECT TOP (CASE WHEN @TopN IS NULL THEN 2147483647 ELSE @TopN END)
-      QueryType
-    , ObjName
-    , CONVERT(varchar(66), GroupKeyHash, 1) AS GroupKeyHashHex
+      f.QueryType
+    , f.ObjName
+    , CONVERT(varchar(66), f.GroupKeyHash, 1) AS GroupKeyHashHex
 
-    , CONCAT(COALESCE(QueryIdRange_L,''?''), '' - '', COALESCE(QueryIdRange_H,''?'')) AS [QueryIdRange_L-H]
-    , CONCAT(COALESCE(CONVERT(varchar(50), QueryHash_L, 1), ''?''), '' - '', COALESCE(CONVERT(varchar(50), QueryHash_H, 1), ''?'')) AS [QueryHashHex_L-H]
+    , CONCAT(COALESCE(f.QueryIdRange_L,''?''), '' - '', COALESCE(f.QueryIdRange_H,''?'')) AS [QueryIdRange_L-H]
+    , CONCAT(COALESCE(CONVERT(varchar(50), f.QueryHash_L, 1), ''?''), '' - '', COALESCE(CONVERT(varchar(50), f.QueryHash_H, 1), ''?'')) AS [QueryHashHex_L-H]
 
-    , CONCAT(CONVERT(varchar(30), PlanCount_L), '' - '', CONVERT(varchar(30), PlanCount_H)) AS [PlanCount_L-H]
-    , CONCAT(CONVERT(varchar(30), ExecCount_L), '' - '', CONVERT(varchar(30), ExecCount_H)) AS [ExecCount_L-H]
+    , CONCAT(COALESCE(CONVERT(varchar(30), dp.DominantPlanId_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.DominantPlanId_H), ''?''))  AS [DominantPlanId_L-H]
+    , CONCAT(COALESCE(CONVERT(varchar(30), dp.DominantQueryId_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.DominantQueryId_H), ''?'')) AS [DominantQueryId_L-H]
+
+    , CONCAT(CONVERT(varchar(30), f.PlanCount_L), '' - '', CONVERT(varchar(30), f.PlanCount_H)) AS [PlanCount_L-H]
+    , CONCAT(CONVERT(varchar(30), f.ExecCount_L), '' - '', CONVERT(varchar(30), f.ExecCount_H)) AS [ExecCount_L-H]
 
     , CONCAT(
-          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(TotalMetric_L, 2))),
+          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.TotalMetric_L, 2))),
           '' - '',
-          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(TotalMetric_H, 2)))
+          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.TotalMetric_H, 2)))
       ) AS ' + QUOTENAME('Total' + @Metric + '_L-H') + N'
 
     , CONCAT(
-          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(AvgMetric_L, 2))),
+          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.AvgMetric_L, 2))),
           '' - '',
-          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(AvgMetric_H, 2)))
+          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.AvgMetric_H, 2)))
       ) AS ' + QUOTENAME('Avg' + @Metric + '_L-H') + N'
 
     , CONCAT(
-          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(TotalDuration_L, 2))),
+          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.TotalDuration_L, 2))),
           '' - '',
-          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(TotalDuration_H, 2)))
+          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.TotalDuration_H, 2)))
       ) AS [TotalDuration_L-H]
 
     , CONCAT(
-          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(AvgDuration_L, 2))),
+          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.AvgDuration_L, 2))),
           '' - '',
-          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(AvgDuration_H, 2)))
+          CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(f.AvgDuration_H, 2)))
       ) AS [AvgDuration_L-H]
 
-    , CONVERT(decimal(19,2), ROUND(RegressionRatio, 2)) AS RegressionRatio
-    , CONVERT(decimal(38,2), ROUND(DeltaAvgMetric, 2))  AS DeltaAvgMetric
-    , CONVERT(decimal(38,2), ROUND(ImpactScore, 2))     AS ImpactScore
-    , ConfidenceFlags
-    , QueryTextSample
-FROM filtered
-ORDER BY ImpactScore DESC;
+    , CONVERT(decimal(19,2), ROUND(f.RegressionRatio, 2)) AS RegressionRatio
+    , CONVERT(decimal(38,2), ROUND(f.DeltaAvgMetric, 2))  AS DeltaAvgMetric
+    , CONVERT(decimal(38,2), ROUND(f.ImpactScore, 2))     AS ImpactScore
+    , f.ConfidenceFlags
+    , f.QueryTextSample
+FROM filtered f
+LEFT JOIN #DomPairs_All dp
+  ON dp.GroupKeyHash = f.GroupKeyHash
+ AND ISNULL(dp.QueryType,'''') = ISNULL(f.QueryType,'''')
+ AND ISNULL(dp.ObjName,'''')   = ISNULL(f.ObjName,'''')
+ORDER BY f.ImpactScore DESC;
 ';
 
 EXEC sp_executesql
     @out1,
-    N'@TopN int, @MinExecCount bigint, @MinRegressionRatio decimal(9,4)',
-    @TopN=@TopN, @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio;
+    N'@TopN int, @MinExecCount bigint, @MinRegressionRatio decimal(9,4), @OnlyMultiPlan bit',
+    @TopN=@TopN, @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio, @OnlyMultiPlan=@OnlyMultiPlan;
 
 ----------------------------------------------------------------------------------------
 -- Resultset #2: Summary (2 decimals on decimal aggregates)
@@ -452,12 +744,13 @@ EXEC sp_executesql
       AND AvgMetric_H > AvgMetric_L
       AND (@MinExecCount IS NULL OR (ExecCount_L >= @MinExecCount AND ExecCount_H >= @MinExecCount))
       AND (@MinRegressionRatio IS NULL OR RegressionRatio >= @MinRegressionRatio)
+      AND (@OnlyMultiPlan = 0 OR ConfidenceFlags LIKE '%MULTI_PLAN%')
 )
 SELECT
       @DbLower   AS LowerDb
     , @DbHigher  AS HigherDb
-    , @LabelLower  AS LowerCL
-    , @LabelHigher AS HigherCL
+    , CONVERT(varchar(10), @LowerCL)  AS LowerCL
+    , CONVERT(varchar(10), @HigherCL) AS HigherCL
     , @Metric  AS Metric
     , @GroupBy AS GroupBy
     , COUNT(*) AS RegressionCount
@@ -486,6 +779,7 @@ CREATE TABLE #MultiGroups
       AND AvgMetric_H > AvgMetric_L
       AND (@MinExecCount IS NULL OR (ExecCount_L >= @MinExecCount AND ExecCount_H >= @MinExecCount))
       AND (@MinRegressionRatio IS NULL OR RegressionRatio >= @MinRegressionRatio)
+      AND (@OnlyMultiPlan = 0 OR ConfidenceFlags LIKE '%MULTI_PLAN%')
 )
 INSERT #MultiGroups (GroupKeyHash, QueryType, ObjName)
 SELECT DISTINCT
@@ -507,20 +801,15 @@ BEGIN
         QueryType        varchar(10)    NOT NULL,
         ObjName          sysname        NULL,
         GroupKeyHash     varbinary(32)  NOT NULL,
-
         PlanId           bigint         NOT NULL,
         QueryId          bigint         NULL,
-
         ExecCount        bigint         NOT NULL,
         TotalMetric      decimal(38,6)  NOT NULL,
         AvgMetric        decimal(38,6)  NOT NULL,
-
         TotalDuration    decimal(38,6)  NOT NULL,
         AvgDuration      decimal(38,6)  NOT NULL,
-
         IntervalStartMin datetime2(0)   NULL,
         IntervalEndMax   datetime2(0)   NULL,
-
         PlanXmlHash      varbinary(32)  NULL
     );
 
@@ -592,6 +881,50 @@ BEGIN
       ON obj.object_id = q.object_id
     LEFT JOIN {{DB}}.sys.schemas sch
       ON sch.schema_id = obj.schema_id
+    OUTER APPLY
+    (
+        SELECT
+            DetectedType =
+                CASE
+                    WHEN @StatementType = ''ALL'' THEN NULL
+                    ELSE
+                    (
+                        SELECT TOP (1) v.Typ
+                        FROM
+                        (
+                            SELECT Typ=''SELECT'',
+                                   Pos=CASE
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''SELECT%'' THEN 1
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%SELECT%'', UPPER(qt.query_sql_text)),0)
+                                            ELSE NULL
+                                       END
+                            UNION ALL
+                            SELECT Typ=''INSERT'',
+                                   Pos=CASE
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''INSERT%'' THEN 1
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%INSERT%'', UPPER(qt.query_sql_text)),0)
+                                            ELSE NULL
+                                       END
+                            UNION ALL
+                            SELECT Typ=''UPDATE'',
+                                   Pos=CASE
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''UPDATE%'' THEN 1
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%UPDATE%'', UPPER(qt.query_sql_text)),0)
+                                            ELSE NULL
+                                       END
+                            UNION ALL
+                            SELECT Typ=''DELETE'',
+                                   Pos=CASE
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''DELETE%'' THEN 1
+                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%DELETE%'', UPPER(qt.query_sql_text)),0)
+                                            ELSE NULL
+                                       END
+                        ) v
+                        WHERE v.Pos IS NOT NULL
+                        ORDER BY v.Pos ASC
+                    )
+                END
+    ) st
     WHERE 1=1
       AND (
             (@IncludeSP = 1 AND q.object_id > 0)
@@ -599,6 +932,10 @@ BEGIN
       )
       AND (@StartTime IS NULL OR rsi.start_time >= @StartTime)
       AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
+      AND (
+            @StatementType = ''ALL''
+            OR st.DetectedType = @StatementType
+          )
       AND EXISTS
       (
           SELECT 1
@@ -643,22 +980,25 @@ BEGIN
 
     EXEC sp_executesql
         @planSqlL,
-        N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0)',
-        @DbName=@DbLower, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime;
+        N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+        @DbName=@DbLower, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
     EXEC sp_executesql
         @planSqlH,
-        N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0)',
-        @DbName=@DbHigher, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime;
+        N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+        @DbName=@DbHigher, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
     ----------------------------------------------------------------------------------------
-    -- Resultset #3 output (plan drilldown) - 2 decimals for decimal columns
+    -- Resultset #3: Plan drilldown - 2 decimals for decimal columns
     ----------------------------------------------------------------------------------------
     ;WITH ranked AS
     (
         SELECT
               pa.SourceDb
-            , CASE WHEN pa.SourceDb = @DbLower THEN @LabelLower ELSE @LabelHigher END AS SourceCL
+            , CASE WHEN pa.SourceDb = @DbLower
+                   THEN CONVERT(varchar(10), @LowerCL)
+                   ELSE CONVERT(varchar(10), @HigherCL)
+              END AS SourceCL
             , CASE WHEN pa.SourceDb = @DbLower THEN 'L' ELSE 'H' END AS Side
             , pa.QueryType
             , pa.ObjName
@@ -845,19 +1185,15 @@ BEGIN
         ObjName           sysname       NULL,
         PlanId            bigint        NOT NULL,
         QueryId           bigint        NULL,
-
         QueryPlanXml      xml           NULL,
         PlanXmlHash       varbinary(32) NULL,
-
         IndexSeekCount    int NULL,
         IndexScanCount    int NULL,
         TableScanCount    int NULL,
-
         HasHashJoin       bit NULL,
         HasMergeJoin      bit NULL,
         HasNestedLoops    bit NULL,
         HasParallelism    bit NULL,
-
         GrantedMemoryKB   bigint NULL,
         HasSpillToTempDb  bit NULL,
         HasMissingIndex   bit NULL
@@ -954,6 +1290,7 @@ BEGIN
           AND (@MinExecCount IS NULL OR (ExecCount_L >= @MinExecCount AND ExecCount_H >= @MinExecCount))
           AND (@MinRegressionRatio IS NULL OR RegressionRatio >= @MinRegressionRatio)
           AND ConfidenceFlags LIKE ''%MULTI_PLAN%''
+          AND (@OnlyMultiPlan = 0 OR ConfidenceFlags LIKE ''%MULTI_PLAN%'')
     ),
     pL AS (SELECT * FROM #PlanInd WHERE SourceDb = @DbLower),
     pH AS (SELECT * FROM #PlanInd WHERE SourceDb = @DbHigher)
@@ -1008,6 +1345,7 @@ BEGIN
               CASE WHEN ISNULL(pL.TableScanCount,0) <> ISNULL(pH.TableScanCount,0) THEN ''TABLE_SCAN_COUNT_CHANGED;'' ELSE '''' END,
               CASE WHEN ISNULL(pL.HasParallelism,0) <> ISNULL(pH.HasParallelism,0) THEN ''PARALLELISM_CHANGED;'' ELSE '''' END,
               CASE WHEN ISNULL(pL.HasSpillToTempDb,0) <> ISNULL(pH.HasSpillToTempDb,0) THEN ''SPILL_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.HasMissingIndex,0) <> ISNULL(pH.HasMissingIndex,0) THEN ''MISSING_INDEX_CHANGED;'' ELSE '''' END,
               CASE WHEN ISNULL(pL.GrantedMemoryKB,-1) <> ISNULL(pH.GrantedMemoryKB,-1) THEN ''GRANT_CHANGED;'' ELSE '''' END
           ) AS DiffFlags
 
@@ -1034,13 +1372,12 @@ BEGIN
 
     EXEC sp_executesql
         @out4,
-        N'@DbLower sysname, @DbHigher sysname, @MinExecCount bigint, @MinRegressionRatio decimal(9,4)',
-        @DbLower=@DbLower, @DbHigher=@DbHigher, @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio;
+        N'@DbLower sysname, @DbHigher sysname, @MinExecCount bigint, @MinRegressionRatio decimal(9,4), @OnlyMultiPlan bit',
+        @DbLower=@DbLower, @DbHigher=@DbHigher, @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio, @OnlyMultiPlan=@OnlyMultiPlan;
 END;
 
 ----------------------------------------------------------------------------------------
 -- Persist results (DROP + CREATE each run)
--- NOTE: Persist still stores numeric columns from #Compare (unchanged).
 ----------------------------------------------------------------------------------------
 IF @PersistResults = 1
 BEGIN
@@ -1059,13 +1396,19 @@ BEGIN
           CAST(SYSUTCDATETIME() AS datetime2(0)) AS CollectedAt
         , CAST(@DbLower     AS sysname)          AS LowerDb
         , CAST(@DbHigher    AS sysname)          AS HigherDb
-        , CAST(@LabelLower  AS sysname)          AS LowerCL
-        , CAST(@LabelHigher AS sysname)          AS HigherCL
+        , CONVERT(sysname, @LowerCL)             AS LowerCL
+        , CONVERT(sysname, @HigherCL)            AS HigherCL
         , CAST(@Metric      AS sysname)          AS Metric
         , CAST(@GroupBy     AS sysname)          AS GroupBy
         , CAST(c.QueryType  AS varchar(10))      AS QueryType
         , CAST(c.ObjName    AS sysname)          AS ObjName
         , CAST(c.GroupKeyHash AS varbinary(32))  AS GroupKeyHash
+
+        , CAST(dp.DominantPlanId_L  AS bigint)   AS DominantPlanId_L
+        , CAST(dp.DominantPlanId_H  AS bigint)   AS DominantPlanId_H
+        , CAST(dp.DominantQueryId_L AS bigint)   AS DominantQueryId_L
+        , CAST(dp.DominantQueryId_H AS bigint)   AS DominantQueryId_H
+
         , CAST(c.PlanCount_L AS int)             AS PlanCount_L
         , CAST(c.PlanCount_H AS int)             AS PlanCount_H
         , CAST(c.ExecCount_L AS bigint)          AS ExecCount_L
@@ -1079,7 +1422,12 @@ BEGIN
         , CAST(c.ConfidenceFlags AS varchar(500))  AS ConfidenceFlags
         , CAST(c.QueryTextSample AS nvarchar(max)) AS QueryTextSample
     INTO ' + QUOTENAME(@rtSchema) + N'.' + QUOTENAME(@rtName) + N'
-    FROM #Compare AS c;
+    FROM #Compare AS c
+    LEFT JOIN #DomPairs_All dp
+      ON dp.GroupKeyHash = c.GroupKeyHash
+     AND ISNULL(dp.QueryType,'''') = ISNULL(c.QueryType,'''')
+     AND ISNULL(dp.ObjName,'''')   = ISNULL(c.ObjName,'''')
+    ;
 
     INSERT INTO ' + QUOTENAME(@rtSchema) + N'.' + QUOTENAME(@rtName) + N'
     (
@@ -1087,6 +1435,10 @@ BEGIN
         LowerDb, HigherDb, LowerCL, HigherCL,
         Metric, GroupBy,
         QueryType, ObjName, GroupKeyHash,
+
+        DominantPlanId_L, DominantPlanId_H,
+        DominantQueryId_L, DominantQueryId_H,
+
         PlanCount_L, PlanCount_H,
         ExecCount_L, ExecCount_H,
         TotalMetric_L, TotalMetric_H,
@@ -1096,9 +1448,13 @@ BEGIN
     )
     SELECT
           SYSUTCDATETIME() AS CollectedAt
-        , @DbLower, @DbHigher, @LabelLower, @LabelHigher
+        , @DbLower, @DbHigher, CONVERT(sysname, @LowerCL), CONVERT(sysname, @HigherCL)
         , @Metric, @GroupBy
         , c.QueryType, c.ObjName, c.GroupKeyHash
+
+        , dp.DominantPlanId_L, dp.DominantPlanId_H
+        , dp.DominantQueryId_L, dp.DominantQueryId_H
+
         , c.PlanCount_L, c.PlanCount_H
         , c.ExecCount_L, c.ExecCount_H
         , c.TotalMetric_L, c.TotalMetric_H
@@ -1106,238 +1462,23 @@ BEGIN
         , c.RegressionRatio, c.ImpactScore
         , c.ConfidenceFlags, c.QueryTextSample
     FROM #Compare AS c
+    LEFT JOIN #DomPairs_All dp
+      ON dp.GroupKeyHash = c.GroupKeyHash
+     AND ISNULL(dp.QueryType,'''') = ISNULL(c.QueryType,'''')
+     AND ISNULL(dp.ObjName,'''')   = ISNULL(c.ObjName,'''')
     WHERE c.RegressionRatio IS NOT NULL
       AND c.AvgMetric_H > c.AvgMetric_L
       AND (@MinExecCount IS NULL OR (c.ExecCount_L >= @MinExecCount AND c.ExecCount_H >= @MinExecCount))
-      AND (@MinRegressionRatio IS NULL OR c.RegressionRatio >= @MinRegressionRatio);
+      AND (@MinRegressionRatio IS NULL OR c.RegressionRatio >= @MinRegressionRatio)
+      AND (@OnlyMultiPlan = 0 OR c.ConfidenceFlags LIKE ''%MULTI_PLAN%'');
     ';
 
     EXEC sp_executesql
         @psql,
-        N'@DbLower sysname, @DbHigher sysname, @LabelLower sysname, @LabelHigher sysname, @Metric sysname, @GroupBy sysname, @MinExecCount bigint, @MinRegressionRatio decimal(9,4)',
+        N'@DbLower sysname, @DbHigher sysname, @LowerCL smallint, @HigherCL smallint, @Metric sysname, @GroupBy sysname, @MinExecCount bigint, @MinRegressionRatio decimal(9,4), @OnlyMultiPlan bit',
         @DbLower=@DbLower, @DbHigher=@DbHigher,
-        @LabelLower=@LabelLower, @LabelHigher=@LabelHigher,
+        @LowerCL=@LowerCL, @HigherCL=@HigherCL,
         @Metric=@Metric, @GroupBy=@GroupBy,
-        @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio;
+        @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio,
+        @OnlyMultiPlan=@OnlyMultiPlan;
 END;
-
-/*======================================================================================
-OVERVIEW
-----------------------------------------------------------------------------------------
-This script compares Query Store performance metrics between two databases running at
-different compatibility levels (LowerCL vs HigherCL).
-
-Its primary goal is to identify:
-- Queries whose performance regressed after a compatibility level change
-- The magnitude and business impact of those regressions
-- Whether regressions are driven by plan changes, multi-plan behavior, or plan shape differences
-
-The script is designed to be executed from ANY database context.
-Actual compatibility levels are resolved dynamically from @DbA and @DbB.
-======================================================================================*/
-
-/*======================================================================================
-METRICS & TERMINOLOGY
-----------------------------------------------------------------------------------------
-Metric (@Metric):
-- LogicalReads : Logical I/O (buffer reads)
-- CPU          : CPU time
-- Duration     : Query duration
-
-LowerCL / HigherCL:
-- LowerCL  : Database with the LOWER compatibility level
-- HigherCL : Database with the HIGHER compatibility level
-(The mapping is automatic; @DbA and @DbB order does not matter.)
-
-Regression definition:
-- AvgMetric_H > AvgMetric_L
-- Optional filters:
-    * @MinExecCount
-    * @MinRegressionRatio
-
-All numeric values in result sets are DISPLAYED with 2 decimal places
-for readability. Internally, full precision is preserved.
-======================================================================================*/
-
-/*======================================================================================
-RESULT SET #1 — REGRESSION OVERVIEW (PRIMARY RESULT SET)
-----------------------------------------------------------------------------------------
-Purpose:
-- High-level list of regressed queries
-- Ordered by ImpactScore (highest business impact first)
-
-How to read:
-- Each row represents ONE logical query group (based on @GroupBy)
-- Values are shown as "LowerCL - HigherCL" pairs
-
-Key columns:
-- QueryType:
-    SP     = Stored Procedure
-    Adhoc  = Ad-hoc query
-
-- ObjName:
-    Schema.ObjectName for SPs, NULL for Adhoc queries
-
-- GroupKeyHashHex:
-    Stable hash representing the grouping key
-    (used to correlate rows across result sets)
-
-- QueryIdRange_L-H:
-    Min-Max QueryId range in LowerCL and HigherCL
-    Useful to detect Query Store fragmentation or re-compilation behavior
-
-- PlanCount_L-H:
-    Number of distinct execution plans observed per side
-    >1 indicates MULTI_PLAN behavior
-
-- ExecCount_L-H:
-    Total execution count per side
-
-- Total<Metric>_L-H:
-    Total aggregated metric over the analysis window
-
-- Avg<Metric>_L-H:
-    Weighted average metric per execution
-
-- RegressionRatio:
-    AvgMetric_H / AvgMetric_L
-    Example:
-        1.25 = 25% regression
-        2.00 = 100% regression
-
-- DeltaAvgMetric:
-    AvgMetric_H - AvgMetric_L
-
-- ImpactScore:
-    (AvgMetric_H - AvgMetric_L) * ExecCount_H
-    This represents TOTAL additional cost introduced by the regression.
-    This is the PRIMARY ranking signal.
-
-- ConfidenceFlags:
-    Heuristics describing data quality or risk:
-      * MISSING_ONE_SIDE
-      * LOW_EXEC
-      * MULTI_PLAN
-      * INTERVAL_END_FALLBACK
-======================================================================================*/
-
-/*======================================================================================
-RESULT SET #2 — SUMMARY
-----------------------------------------------------------------------------------------
-Purpose:
-- Executive-level summary of detected regressions
-
-Key columns:
-- RegressionCount:
-    Total number of regressed query groups
-
-- MultiPlanCount:
-    Number of regressed queries exhibiting MULTI_PLAN behavior
-
-- SumImpactScore:
-    Total cumulative regression impact across all queries
-
-- MaxImpactScore:
-    Single most expensive regression
-
-- AvgRegressionRatio:
-    Average regression ratio across all regressed queries
-
-Use case:
-- Quick health check after compatibility level changes
-- Baseline comparison across test runs
-======================================================================================*/
-
-/*======================================================================================
-RESULT SET #3 — MULTI-PLAN DRILLDOWN (PLAN-LEVEL)
-----------------------------------------------------------------------------------------
-Returned ONLY if multi-plan regressions exist.
-
-Purpose:
-- Inspect plan-level behavior for queries with multiple plans
-- Understand which plans dominate execution and cost
-
-How to read:
-- Each row represents ONE PLAN for ONE query group and ONE side (L or H)
-
-Key columns:
-- SourceDb / SourceCL / Side:
-    Identify which database and compatibility level the plan belongs to
-
-- PlanId / QueryId:
-    Native Query Store identifiers
-
-- ExecCount:
-    Execution count for this specific plan
-
-- AvgMetric / TotalMetric:
-    Cost contribution of this plan
-
-- RankByAvgMetric:
-    Rank within the group based on AvgMetric (descending)
-
-- RankByExecCount:
-    Rank within the group based on execution frequency
-
-Use case:
-- Identify plan skew
-- Detect plan regression masked by averaging
-======================================================================================*/
-
-/*======================================================================================
-RESULT SET #4 — DOMINANT PLAN COMPARISON + PLAN SHAPE DIFF
-----------------------------------------------------------------------------------------
-Returned ONLY for MULTI_PLAN regressions.
-
-Purpose:
-- Compare the dominant execution plan in LowerCL vs HigherCL
-- Highlight structural plan changes
-
-Dominant plan definition:
-- Highest ExecCount
-- Tie-breaker: higher AvgMetric, then higher PlanId
-
-Key columns:
-- ExecCount_L-H / AvgMetric_L-H:
-    Dominant plan cost comparison
-
-- DominantPlanId_L-H / DominantQueryId_L-H:
-    Identifiers of dominant plans per side
-
-- PlanXmlHashHex_L-H:
-    Hash of plan XML (fast equality check)
-
-- Operator counts (IndexSeek, Scan, TableScan):
-    Structural differences in access paths
-
-- Join indicators:
-    HasHashJoin / HasMergeJoin / HasNestedLoops
-
-- Memory & spill indicators:
-    GrantedMemoryKB
-    SpillToTempDb
-    MissingIndex
-
-- DiffFlags:
-    Human-readable summary of detected plan shape differences
-
-- PlanXml_<CL>:
-    Actual execution plan XML
-    Clickable in SSMS for visual inspection
-
-Use case:
-- Root cause analysis
-- Confirm CE changes, join strategy changes, or memory grant regressions
-======================================================================================*/
-
-/*======================================================================================
-PERSISTENCE (@PersistResults)
-----------------------------------------------------------------------------------------
-If @PersistResults = 1:
-- Results are written into @ResultsTable
-- Table is DROPPED and RE-CREATED on each execution
-- Stored values keep full numeric precision (no rounding)
-
-If @PersistResults = 0:
-- No permanent objects are created
-======================================================================================*/
