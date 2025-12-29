@@ -46,5 +46,24 @@ All required details for installing and configuring XEvent Query Replayer are co
 - [Logging](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#logging)
 - [Errors](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#errors)
 
-- 
 
+Once XEvent Query Replayer is fully set up and ready, we can move on and start with the first step of the replay process.
+
+<br/>
+
+## Step 1 / Capturing Data
+As the first step, we capture the production workload using the [start-capture.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/start-capture.sql) script. The key decision here is how long you want to capture. If your workload is very busy and the server is handling a lot of concurrent activity, a 5-minute capture is often enough to get a representative sample.
+
+One important thing to keep in mind: if you capture 5 minutes of workload, you should not expect to replay it in exactly 5 minutes with XEvent Query Replayer. The more queries you capture (especially under high concurrency), the longer the replay will take.
+
+The start-capture.sql script supports several parameters, but the two most important ones are:
+
+- `@Duration`: how long the capture should run, in "HH:MM:SS" format. For example, for a 5-minute capture you would use: 00:05:00
+- `@CollectType`: what type of queries you want to capture:
+  - "sp" (stored procedures)
+  - "adhoc" (ad-hoc queries)
+  - "sp-and-adhoc" (both)
+
+All parameters are documented in detail in the script itself via comments.
+
+When you run the script, it creates an Extended Events session, captures the workload using the selected options, and once the capture is completed, it drops the session automatically. Because of that, the user running the script must have permission to create and drop Extended Events sessions.
