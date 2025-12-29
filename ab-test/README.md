@@ -163,3 +163,36 @@ To validate this, we run the [step-8.sql](https://github.com/yigitaktan/XeQueryR
 Now that DemoDB_cl120 contains all the Query Store metadata we need, we can safely remove the original DemoDB from the replay server. Keeping it around only wastes disk space.
 
 Using the [step-9.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-9.sql) script, we drop DemoDB and free up space on the server for the next restore and replay round.
+
+
+## Step 10 / Round 2 - Data Recreation
+To start Round 2, we restore the DemoDB backup again, exactly the same way we did in Round 1.
+
+The key requirement is the same: the restored backup must represent the correct point in time, meaning the same timestamp / LSN that matches the start of the workload capture. This ensures the replay environment is consistent and ready for the second replay run under the upgraded compatibility level.
+
+
+## Step 11 / Round 2 - Check/Configure Compatibility Level
+Before replaying the data in Round 2, we must make sure the compatibility level has been upgraded to 170. To do that, we run the [step-11.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-11.sql) script.
+
+This is the same script we used in the first round to set the compatibility level to 120. The only difference now is that we set it to 170 so the replay runs under the upgraded compatibility level.
+
+
+## Step 12 / Round 2 - Configuring the Query Store
+Next, we enable and configure Query Store again using the exact same settings as in Round 1. This is important to ensure the comparison between the two rounds is fair and consistent.
+
+To do this, simply run the [step-12.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-12.sql) script.
+
+
+## Step 13 / Round 2 - Replaying Data
+Now it's time to replay the same captured workload again, but this time under compatibility level 170.
+
+Before you start the replay, do one last sanity check:
+
+- The database was restored from the same backup / point in time used in Round 1
+- The compatibility level is set to 170
+- Query Store is enabled and configured with the same settings as before
+
+Once you have confirmed all of that, you can run XEvent Query Replayer and replay the XEL workload against the database in CL 170.
+
+<img width="580" height="360" alt="step13" src="https://github.com/user-attachments/assets/f90fe9f5-68b6-4e50-8b3d-edf0547c509e" />
+
