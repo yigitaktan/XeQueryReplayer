@@ -399,14 +399,13 @@ Flags do not automatically invalidate results, but they require engineering judg
 
 ## Recommended Analysis Workflow
 
-This section describes a **practical, step-by-step workflow** for analyzing Query Store results produced by the Query Store CL Regression Comparator script.  
-The goal is to move from **raw regression signals** to **actionable engineering decisions** in a controlled and repeatable way.
+This section describes a practical, step-by-step workflow for analyzing Query Store results produced by the Query Store CL Regression Comparator script. The goal is to move from raw regression signals to actionable engineering decisions in a controlled and repeatable way.
 
 The workflow is intentionally ordered. Skipping steps often leads to false positives, misinterpretation, or unnecessary mitigation work.
 
 ---
 
-### Step 1 – Start with Result Set #1 (Regression Overview)
+### Step 1 - Start with Result Set #1 (Regression Overview)
 
 Always begin with **Result Set #1**, which provides the high-level regression overview.
 
@@ -415,7 +414,7 @@ Actions:
 - Focus on the **top-impact queries first**, not on the highest regression ratios
 
 Why:
-- ImpactScore reflects *real workload impact*, not just relative degradation
+- ImpactScore reflects real workload impact, not just relative degradation
 - A query that regresses slightly but runs thousands of times is usually more important than a query that regresses heavily but runs rarely
 
 > NOTE:  
@@ -423,7 +422,7 @@ Why:
 
 ---
 
-### Step 2 – Validate Execution Volume and Confidence Signals
+### Step 2 - Validate Execution Volume and Confidence Signals
 
 Before deep analysis, validate that the regression signal is trustworthy.
 
@@ -445,7 +444,7 @@ Why:
 
 ---
 
-### Step 3 – Identify Plan Instability (MULTI_PLAN Detection)
+### Step 3 - Identify Plan Instability (MULTI_PLAN Detection)
 
 Next, determine whether the regression is associated with plan instability.
 
@@ -466,7 +465,7 @@ Why:
 
 ---
 
-### Step 4 – Drill Down Using Result Set #3 (Multi-Plan Details)
+### Step 4 - Drill Down Using Result Set #3 (Multi-Plan Details)
 
 If multi-plan behavior exists, move to **Result Set #3**.
 
@@ -488,9 +487,9 @@ Why:
 
 ---
 
-### Step 5 – Compare Dominant Plan Shapes (Result Set #4)
+### Step 5 - Compare Dominant Plan Shapes (Result Set #4)
 
-Once the dominant plan is identified, analyze **Result Set #4** to understand *why* the regression occurred.
+Once the dominant plan is identified, analyze **Result Set #4** to understand why the regression occurred.
 
 Actions:
 - Compare operator usage (Index Seek vs Scan, Join types)
@@ -509,7 +508,7 @@ Why:
 
 ---
 
-### Step 6 – Correlate with Metric Type
+### Step 6 - Correlate with Metric Type
 
 Always interpret findings in the context of the selected metric.
 
@@ -524,7 +523,7 @@ Why:
 
 ---
 
-### Step 7 – Eliminate Common False Positives
+### Step 7 - Eliminate Common False Positives
 
 Before taking action, explicitly rule out common false positives.
 
@@ -536,12 +535,12 @@ Checklist:
 - [ ] Replay environment comparable across rounds
 
 Why:
-- Query Store captures *what happened*, not *why it happened*
+- Query Store captures **what happened**, not **why it happened**
 - Context matters as much as metrics
 
 ---
 
-### Step 8 – Decide on Mitigation Strategy
+### Step 8 - Decide on Mitigation Strategy
 
 Only after completing the previous steps should mitigation be considered.
 
@@ -558,12 +557,12 @@ Decision factors:
 - Plan stability
 - Long-term maintainability
 
-> IMPORTANT:  
+> [!IMPORTANT]  
 > Plan forcing should be a last resort, not the default response.
 
 ---
 
-### Step 9 – Re-Validate After Mitigation
+### Step 9 - Re-Validate After Mitigation
 
 After applying mitigation:
 - Re-run the replay
@@ -578,7 +577,7 @@ Why:
 
 ---
 
-### Step 10 – Document and Persist Results
+### Step 10 - Document and Persist Results
 
 Finally, persist findings for traceability.
 
