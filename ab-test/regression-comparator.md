@@ -17,15 +17,27 @@ The script is intentionally designed to be:
 - Focused on impact, not just ratios
 
 ## How Queries Are Grouped
-Queries can be grouped using the @GroupBy parameter:
 
-| GroupBy option    | Description                          | When to use                               |
-| ---------------   | ------------------------------------ | ----------------------------------------- |
-| `QueryHash`       | Groups by compiled query shape       | Default and recommended for most analyses |
-| `QueryText`       | Groups by exact query text           | Useful for static workloads               |
-| `NormalizedText`  | Groups by whitespace-normalized text | Useful for ad-hoc heavy systems           |
+One of the core challenges in compatibility level A/B testing is reliably correlating the *same logical query* across two different environments. Query IDs and Plan IDs are not stable across restores, replays, or compatibility levels, so direct ID comparison is not sufficient.
 
-Each group is internally represented by a GroupKeyHash, which uniquely identifies the logical query across both environments.
+To solve this, the script uses a configurable **logical grouping strategy**, controlled by the `@GroupBy` parameter.
+
+| GroupBy option     | Description                          | When to use                               |
+|--------------------|--------------------------------------|-------------------------------------------|
+| `QueryHash`        | Groups by compiled query shape       | Default and recommended for most analyses |
+| `QueryText`        | Groups by exact query text           | Useful for static, well-controlled code   |
+| `NormalizedText`   | Groups by whitespace-normalized text | Useful for ad-hoc–heavy systems           |
+
+Each logical group is internally represented by a **GroupKeyHash**, which acts as a stable identifier for the query across both databases.
+
+This approach allows the script to:
+
+- Correlate queries even when `query_id` values differ
+- Tolerate minor plan or compilation differences
+- Focus analysis on *logical behavior*, not physical identifiers
+
+Choosing the correct grouping strategy is critical. Overly strict grouping can fragment results, while overly loose grouping can mix unrelated queries. For most workloads, `QueryHash` provides the best balance.
+
 
 
 ## Metric Selection
