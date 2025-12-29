@@ -8,6 +8,29 @@
 
 <br/>
 
+* **[Upgrading Compatibility Level](#upgrading-compatibility-level)**
+* **[Getting Started](#getting-started)**
+* **[Step 1 / Capturing Data](#step-1--capturing-data)**
+* **[Step 2 / Round 1 - Syncing Up](#step-2--round-1---syncing-up)**
+* **[Step 3 / Round 1 - Check/Configure Compatibility Level](#step-3--round-1---checkconfigure-compatibility-level)**
+* **[Step 4 / Round 1 - Configuring the Query Store](#step-4--round-1---configuring-the-query-store)**
+* **[Step 5 / Round 1 - Replaying Data](#step-5--round-1---replaying-data)**
+* **[Step 6 / Round 1 - Verify Collected Data](#step-6--round-1---verify-collected-data)**
+* **[Step 7 / Round 1 - Extracting Query Store Data](#step-7--round-1---extracting-query-store-data)**
+* **[Step 8 / Round 1 - Verify the Clone](#step-8--round-1---verify-the-clone)**
+* **[Step 9 / Round 1 - Removing the Restored Database](#step-9--round-1---removing-the-restored-database)**
+* **[Step 10 / Round 2 - Data Recreation](#step-10--round-2---data-recreation)**
+* **[Step 11 / Round 2 - Check/Configure Compatibility Level](#step-11--round-2---checkconfigure-compatibility-level)**
+* **[Step 12 / Round 2 - Configuring the Query Store](#step-12--round-2---configuring-the-query-store)**
+* **[Step 13 / Round 2 - Replaying Data](#step-13--round-2---replaying-data)**
+* **[Step 14 / Round 2 - Verify Collected Data](#step-14--round-2---verify-collected-data)**
+* **[Step 15 / Round 2 - Extracting Query Store Data](#step-15--round-2---extracting-query-store-data)**
+* **[Step 16 / Round 2 - Verify the Clone](#step-16--round-2---verify-the-clone)**
+* **[Step 17 / Round 2 - Removing the Restored Database](#step-17--round-2---removing-the-restored-database)**
+* **[Step 18 / Analysis Time](#step-18--analysis-time)**
+
+<br/>
+
 ## Upgrading Compatibility Level
 
 When you change the compatibility level in SQL Server. In other words, when you move a database to a higher compatibility level, you naturally expect SQL Server to maintain the same I/O behavior for your queries, or ideally produce better and more efficient I/O.
