@@ -16,6 +16,205 @@ The script is intentionally designed to be:
 - Deterministic and repeatable
 - Focused on impact, not just ratios
 
+
+## Script Parameters and Execution Model
+
+The script is designed to be fully deterministic and operator-driven. In other words, the output is entirely shaped by the parameter block at the top of the script. Those parameters control **which two Query Store snapshots are compared**, **how queries are correlated**, **what metric is evaluated**, **what qualifies as a regression**, and **whether results are persisted for historical tracking**.
+
+At a high level, the script runs in four phases:
+
+1. **Extract** Query Store runtime stats independently from each database (`@DbA` and `@DbB`)
+2. **Normalize / Group** queries into logical “query groups” using `@GroupBy`
+3. **Compute** weighted totals, averages, ratios, and impact using the selected `@Metric`
+4. **Filter + Rank + Flag** the output using thresholds and inclusion rules (`@MinExecCount`, `@MinRegressionRatio`, `@OnlyMultiPlan`, `@IncludeAdhoc`, `@IncludeSP`, and optional time filtering)
+
+The same Query Store data combined with the same parameter values will always produce the same result sets, which makes the script suitable for repeatable A/B testing runs and regression tracking.
+
+### Database Inputs
+
+- `@DbA` (LowerCL / Baseline database)  
+  The database containing Query Store data from the **lower compatibility level** replay.  
+  Example: `DemoDB_CL120`
+
+- `@DbB` (HigherCL / Candidate database)  
+  The database containing Query Store data from the **higher compatibility level** replay.  
+  Example: `DemoDB_CL170`
+
+These two databases are treated as independent evidence sources. The script never assumes that `query_id` or `plan_id` values match between them. Correlation happens through the grouping strategy (`@GroupBy`).
+
+### Scope and Noise Control
+
+- `@MinExecCount`  
+  Filters out low-signal query groups where execution volume is too small to be trustworthy.  
+  This is one of the most important parameters for preventing false positives.
+
+  **Behavior**:
+  - If `NULL`, no minimum is enforced (more complete, but noisier).
+  - If set (e.g., `50`), query groups where execution count is below the threshold on one or both sides are flagged (and depending on script logic may be excluded from the primary regression list).
+
+  **Practical guidance**:
+  - Use a higher value when your capture window is short and workload is spiky.
+  - Use a lower value when your capture window is long and you want more coverage.
+
+- `@MinRegressionRatio`  
+  Controls the minimum regression ratio that qualifies as a “regression candidate.”  
+  The script computes:
+
+  `RegressionRatio = AvgMetric_H / NULLIF(AvgMetric_L, 0)`
+
+  **Behavior**:
+  - If `NULL`, the script does not enforce a minimum ratio and will output everything that worsened (useful for broad discovery).
+  - If set (e.g., `1.25`), only groups that are at least **25% worse** in HigherCL will be included in the primary regression result set.
+
+  **Practical guidance**:
+  - Start with something like `1.25` for initial triage.
+  - Move to `1.10` if you need to catch smaller regressions with high impact.
+  - Move to `1.50+` when you only care about “obviously bad” regressions.
+
+- `@TopN`  
+  Limits the output to the top N rows after sorting by impact or ranking logic.  
+  This is purely a usability control for large workloads.
+
+  **Behavior**:
+  - If `NULL`, no limit is applied.
+  - If set (e.g., `100`), returns the top 100 regressions based on the script’s ranking (typically ImpactScore descending).
+
+  **Practical guidance**:
+  - Use `@TopN` for iterative tuning cycles where you only want to focus on the worst offenders first.
+
+### Time Window Filtering
+
+- `@StartTime` and `@EndTime`  
+  Restrict analysis to a specific Query Store runtime stats interval window. This is useful when:
+  - You replayed multiple workloads into the same Query Store
+  - You want to compare only a specific replay attempt
+  - You need to exclude warm-up or ramp-down phases
+
+  **Behavior**:
+  - If both are `NULL`, the script analyzes the full available Query Store history in each database.
+  - If provided, the script filters Query Store runtime stats intervals to those that overlap the specified window.
+
+  **Important note (engine-version nuance)**:
+  Some SQL Server versions expose limited interval end-time metadata in Query Store. In those cases, the script may fall back to using the maximum observed `start_time` for interval bounding, and it will flag this via `INTERVAL_END_FALLBACK`. This does not invalidate results, but it can slightly reduce temporal precision when slicing narrow windows.
+
+  **Practical guidance**:
+  - Use the widest reasonable window that cleanly maps to your replay period.
+  - Avoid overly tight windows unless you are certain about Query Store interval boundaries.
+
+### Metric Selection
+
+- `@Metric`  
+  Chooses the single metric used for all comparisons, ratios, and impact calculations.
+
+  Supported values:
+  - `LogicalReads` (recommended default)  
+    Best for diagnosing plan efficiency and I/O regressions (index access changes, scan vs seek shifts, CE changes impacting join order, etc.).
+  - `CPU`  
+    Best for compute-bound workloads where logical reads are stable but CPU time changes due to different plan shapes or operators.
+  - `Duration`  
+    Best for latency / end-to-end response time comparisons. Most sensitive to concurrency and blocking effects, so interpret carefully.
+
+  **Design principle**:
+  The script derives all totals and averages from the selected metric using execution-weighted aggregation (not simple averages), ensuring that high-frequency executions dominate the math appropriately.
+
+### Query Grouping Strategy
+
+- `@GroupBy`  
+  Defines how the script correlates “the same logical query” across LowerCL and HigherCL.
+
+  Supported values:
+  - `QueryHash`  
+    Default and recommended. Most stable across environments. Groups by compiled query shape rather than literal text.
+  - `QueryText`  
+    Exact text match. Useful when you want strict identity matching (usually for controlled workloads).
+  - `NormalizedText`  
+    Groups by whitespace-normalized text. Useful for ad-hoc heavy systems where the same query appears with minor formatting differences.
+
+  **Trade-off**:
+  - Too strict (`QueryText`) can fragment results (same logical query becomes multiple groups).
+  - Too loose can mix unrelated queries if normalization collapses differences.
+
+### Statement-Type Filtering
+
+- `@StatementType`  
+  Filters results by the statement class:
+
+  Supported values:
+  - `ALL` (default)
+  - `SELECT`
+  - `INSERT`
+  - `UPDATE`
+  - `DELETE`
+
+  **When it matters**:
+  - Use `SELECT` when you only care about read-path regressions and want to reduce noise from write-heavy replay behavior.
+  - Use `INSERT/UPDATE/DELETE` to isolate write regressions or investigate plan regressions driven by DML patterns.
+
+  **Note**:
+  Classification is typically derived from Query Store query text inspection logic. For mixed batches or complex statements, categorization may not be perfect; treat this as a pragmatic filter, not a formal parser.
+
+### Workload-Type Inclusion (Ad-hoc vs Stored Procedures)
+
+- `@IncludeAdhoc`  
+  Controls whether ad-hoc queries are included.
+
+  Values:
+  - `1` include ad-hoc queries
+  - `0` exclude ad-hoc queries
+
+- `@IncludeSP`  
+  Controls whether stored procedure queries are included.
+
+  Values:
+  - `1` include stored procedure queries
+  - `0` exclude stored procedure queries
+
+  **How to use these together**:
+  - Both `1`: full workload comparison (most common)
+  - Only ad-hoc: `@IncludeAdhoc = 1`, `@IncludeSP = 0`
+  - Only SP: `@IncludeAdhoc = 0`, `@IncludeSP = 1`
+
+  **Practical guidance**:
+  - If your tuning process is split (e.g., first stabilize SPs, then review ad-hoc), these toggles let you isolate each category without changing the rest of the script.
+
+### Multi-Plan Focus Mode
+
+- `@OnlyMultiPlan`  
+  Restricts output to query groups that have multiple plans on either side.
+
+  Values:
+  - `1` only show multi-plan groups
+  - `0` show all qualifying groups
+
+  **When to use**:
+  - When you specifically want to investigate plan instability, parameter sensitivity, or plan-shape divergence across CLs.
+  - When the regression list is huge and you want to first isolate regressions likely caused by plan behavior changes.
+
+### Persistence and Historical Tracking
+
+- `@PersistResults`  
+  Controls whether the script persists its raw and/or summarized results into a permanent table.
+
+  Values:
+  - `1` persist results
+  - `0` do not persist (ad-hoc analysis only)
+
+  **Why persist**:
+  Persisting allows you to:
+  - Compare multiple replay runs over time
+  - Track whether regressions improved after tuning
+  - Build a history of “known offenders” per database / CL pair
+  - Integrate results into a broader pipeline (reporting, dashboards, automation)
+
+- `@ResultsTable`  
+  The fully qualified target table name used when `@PersistResults = 1`.  
+  Example: `dbo.QueryStoreCLRegressionResults`
+
+  **Operational guidance**:
+  - Keep this table in a dedicated utility database if multiple teams use it.
+  - Consider adding a run identifier (timestamp, run label, capture window) if the script doesn’t already store one, so multiple runs can coexist cleanly.
+
+
 ## How Queries Are Grouped
 
 One of the core challenges in compatibility level A/B testing is reliably correlating the *same logical query* across two different environments. Query IDs and Plan IDs are not stable across restores, replays, or compatibility levels, so direct ID comparison is not sufficient.
