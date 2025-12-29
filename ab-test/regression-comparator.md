@@ -32,6 +32,48 @@ The script is intentionally designed to be:
 * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
 * **[Analytical Deliverables and Decision Readiness](#analytical-deliverables-and-decision-readiness)**
 
+## Quick Start
+
+> NOTE:
+> The full implementation is available here: [Query Store CL Regression Comparator – SQL Script](./QueryStore_CL_Regression_Comparator.sql)
+
+This quick start is designed to get you from “two Query Store datasets” to a ranked regression list in a few minutes.
+
+### What you need
+
+Before running the script, ensure you have:
+
+- Two databases containing Query Store data for the **same captured workload**, replayed under:
+  - **LowerCL** baseline (e.g., CL 120)
+  - **HigherCL** candidate (e.g., CL 170)
+- Query Store is enabled and has collected runtime stats on both sides
+- (Optional but recommended) A replay-aligned time window you can filter to (`@StartTime`, `@EndTime`)
+
+### Run it (minimal parameter block)
+
+Start with the baseline triage setup below. It keeps noise under control while surfacing real risk.
+
+```sql
+DECLARE
+      @DbA sysname                     = N'DemoDB_CL120'     -- LowerCL (baseline)
+    , @DbB sysname                     = N'DemoDB_CL170'     -- HigherCL (candidate)
+    , @MinExecCount bigint             = 50                  -- reduce low-signal noise
+    , @MinRegressionRatio decimal(9,4) = 1.25                -- only show >= 25% regressions
+    , @TopN int                        = 100                 -- focus on top offenders
+    , @StartTime datetime2(0)          = NULL                -- optionally set replay window
+    , @EndTime   datetime2(0)          = NULL
+    , @Metric sysname                  = N'LogicalReads'     -- LogicalReads | CPU | Duration
+    , @GroupBy sysname                 = N'QueryHash'        -- QueryHash | QueryText | NormalizedText
+    , @StatementType varchar(10)       = N'ALL'              -- ALL | SELECT | INSERT | UPDATE | DELETE
+    , @IncludeAdhoc bit                = 1                   -- include ad-hoc queries
+    , @IncludeSP bit                   = 1                   -- include stored procedures
+    , @OnlyMultiPlan bit               = 0                   -- set 1 to focus only on multi-plan
+    , @PersistResults bit              = 1
+    , @ResultsTable sysname            = N'dbo.QueryStoreCLRegressionResults';
+
+-- Execute the full script after setting parameters
+-- (The script reads these parameters and produces the result sets described below.)
+
 
 ## Script Parameters and Execution Model
 
