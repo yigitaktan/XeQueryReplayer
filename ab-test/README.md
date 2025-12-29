@@ -28,7 +28,7 @@
 * **[Step 16 / Round 2 - Verify the Clone](#step-16--round-2---verify-the-clone)**
 * **[Step 17 / Round 2 - Removing the Restored Database](#step-17--round-2---removing-the-restored-database)**
 * **[Step 18 / Analysis Time](#step-18--analysis-time)**
-  * **[What the Script Does](#what-the-script-does)**
+* **[Query Store CL Regression Comparator script](#query-store-cl-regression-comparator-script)**
   * **[How Queries Are Grouped](#how-queries-are-grouped)**
   * **[Metric Selection](#metric-selection)**
   * **[Result Sets Overview](#result-sets-overview)**
@@ -276,7 +276,7 @@ You can find the analysis script in the [step-18.sql](https://github.com/yigitak
 
 Before running it, make sure you review and adjust the parameter sections at the top of the script according to your own environment and analysis needs. These parameters directly affect how the comparison and regression analysis are performed, so tailoring them correctly is essential for meaningful results.
 
-### What the Script Does
+## Query Store CL Regression Comparator script
 The Query Store CL Regression Comparator script performs the following actions:
 
 - Aggregates Query Store runtime statistics separately for each database
@@ -297,13 +297,14 @@ The script is intentionally designed to be:
 ### How Queries Are Grouped
 Queries can be grouped using the @GroupBy parameter:
 
-| GroupBy option  | Description                          | When to use                               |
-| --------------- | ------------------------------------ | ----------------------------------------- |
+| GroupBy option    | Description                          | When to use                               |
+| ---------------   | ------------------------------------ | ----------------------------------------- |
 | `QueryHash`       | Groups by compiled query shape       | Default and recommended for most analyses |
 | `QueryText`       | Groups by exact query text           | Useful for static workloads               |
 | `NormalizedText`  | Groups by whitespace-normalized text | Useful for ad-hoc heavy systems           |
 
 Each group is internally represented by a GroupKeyHash, which uniquely identifies the logical query across both environments.
+
 
 ### Metric Selection
 The comparison metric is controlled by the @Metric parameter:
@@ -317,6 +318,7 @@ All comparisons, ratios, and impact calculations are derived consistently from t
 ### Result Sets Overview
 The script produces multiple result sets, each serving a specific analytical purpose.
 
+
 ### Result Set #1 – Regression Overview (Primary Analysis View)
 This is the main entry point for analysis.
 
@@ -327,26 +329,27 @@ It lists only queries where:
 
 Key Columns and How to Read Them:
 
-| Column                | Meaning                                                                                                                                   |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `GroupKeyHashHex`     | Unique identifier for the logical query group                                                                                             |
-| `DominantQueryId_L-H` | **LowerCL–HigherCL** dominant `query_id` range for the group (the `query_id` that contributed the most to executions/impact on each side) |
-| `QueryIdRange_L-H`    | `query_id` ranges observed in **LowerCL–HigherCL** for the group                                                                          |
-| `DominantPlanId_L-H`  | **LowerCL–HigherCL** dominant `plan_id` range for the group (the `plan_id` that was most prevalent / most executed on each side)          |
-| `PlanCount_L-H`       | Number of **distinct** cached/executed plans per side (**LowerCL–HigherCL**)                                                              |
-| `ExecCount_L-H`       | Total executions per side (**LowerCL–HigherCL**)                                                                                          |
-| `Avg<Metric>_L-H`     | Average metric value per execution (**LowerCL–HigherCL**)                                                                                 |
-| `DeltaAvgMetric`      | `Avg<Metric>_H − Avg<Metric>_L` (absolute change in average metric from LowerCL to HigherCL)                                              |
-| `Total<Metric>_L-H`   | Total metric consumption (**LowerCL–HigherCL**)                                                                                           |
-| `RegressionRatio`     | `Avg<Metric>_H / NULLIF(Avg<Metric>_L, 0)` (how much worse/better HigherCL is vs LowerCL)                                                 |
-| `ImpactScore`         | `(Avg<Metric>_H − Avg<Metric>_L) × ExecCount_H` (estimated total delta impact in HigherCL execution volume)                               |
-| `ConfidenceFlags`     | Signals that affect trustworthiness (e.g., low executions, high plan count instability, missing side, text/hash mismatch, etc.)           |
-| `QueryTextSample`     | Representative query text for the group (sample to quickly recognize the workload)                                                        |
+| Column                   | Meaning                                                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `GroupKeyHashHex`        | Unique identifier for the logical query group                                                                                             |
+| `DominantQueryId_L-H`    | **LowerCL–HigherCL** dominant `query_id` range for the group (the `query_id` that contributed the most to executions/impact on each side) |
+| `QueryIdRange_L-H`       | `query_id` ranges observed in **LowerCL–HigherCL** for the group                                                                          |
+| `DominantPlanId_L-H`     | **LowerCL–HigherCL** dominant `plan_id` range for the group (the `plan_id` that was most prevalent / most executed on each side)          |
+| `PlanCount_L-H`          | Number of **distinct** cached/executed plans per side (**LowerCL–HigherCL**)                                                              |
+| `ExecCount_L-H`          | Total executions per side (**LowerCL–HigherCL**)                                                                                          |
+| `Avg<Metric>_L-H`        | Average metric value per execution (**LowerCL–HigherCL**)                                                                                 |
+| `DeltaAvgMetric`         | `Avg<Metric>_H − Avg<Metric>_L` (absolute change in average metric from LowerCL to HigherCL)                                              |
+| `Total<Metric>_L-H`      | Total metric consumption (**LowerCL–HigherCL**)                                                                                           |
+| `RegressionRatio`        | `Avg<Metric>_H / NULLIF(Avg<Metric>_L, 0)` (how much worse/better HigherCL is vs LowerCL)                                                 |
+| `ImpactScore`            | `(Avg<Metric>_H − Avg<Metric>_L) × ExecCount_H` (estimated total delta impact in HigherCL execution volume)                               |
+| `ConfidenceFlags`        | Signals that affect trustworthiness (e.g., low executions, high plan count instability, missing side, text/hash mismatch, etc.)           |
+| `QueryTextSample`        | Representative query text for the group (sample to quickly recognize the workload)                                                        |
 
 > [!TIP]
 > - Sort by ImpactScore descending - this surfaces what actually hurts the system
 > - A high RegressionRatio with a low ImpactScore is often negligible
 > - A moderate ratio with a high ImpactScore deserves immediate attention
+
 
 ### Result Set #2 - Summary Statistics
 This result set provides a high-level assessment of the comparison:
@@ -362,6 +365,7 @@ This view is useful for:
 - Management summaries
 - Comparing multiple replay iterations
 
+
 ### Result Set #3 – Multi-Plan Drill-Down (Plan-Level Metrics)
 This result set appears only if multi-plan scenarios exist.
 
@@ -376,6 +380,7 @@ This view answers:
 - Which plan is dominant?
 - Are plans evenly used or skewed?
 - Is a bad plan dominating in higher CL?
+
 
 ### Result Set #4 - Dominant Plan Shape Comparison
 This result set compares the dominant execution plan from each side.
@@ -451,6 +456,7 @@ This can happen due to plan elimination, parameter sensitivity, or replay timing
 
 #### Q: Does a plan shape change always mean regression?
 No. Some plan changes are improvements. The metric and ImpactScore determine whether the change is harmful.
+
 
 ### Outcome of This Step
 
