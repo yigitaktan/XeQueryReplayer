@@ -272,4 +272,4 @@ This step provides a deterministic, query-level comparison between two databases
 - Rank them by real impact
 - Understand whether regressions are caused by plan instability, plan shape changes, or execution behavior differences
 
-For a detailed breakdown of how this comparison is implemented, including query grouping strategy, metric normalization, execution-weighted aggregation, regression scoring, and result interpretation, click through to the dedicated “Query Store CL Regression Comparator” documentation, where the script logic and analysis methodology are explained in depth.
+For a detailed breakdown of how this comparison is implemented, including query grouping strategy, metric normalization, execution-weighted aggregation, regression scoring, and result interpretation, click through to the dedicated [Query Store CL Regression Comparator](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/regression-comparator.md) documentation, where the script logic and analysis methodology are explained in depth.
