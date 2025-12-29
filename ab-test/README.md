@@ -28,18 +28,6 @@
 * **[Step 16 / Round 2 - Verify the Clone](#step-16--round-2---verify-the-clone)**
 * **[Step 17 / Round 2 - Removing the Restored Database](#step-17--round-2---removing-the-restored-database)**
 * **[Step 18 / Analysis Time](#step-18--analysis-time)**
-* **[Query Store CL Regression Comparator script](#query-store-cl-regression-comparator-script)**
-  * **[How Queries Are Grouped](#how-queries-are-grouped)**
-  * **[Metric Selection](#metric-selection)**
-  * **[Result Sets Overview](#result-sets-overview)**
-  * **[Result Set #1 – Regression Overview (Primary Analysis View)](#result-set-1--regression-overview-primary-analysis-view)**
-  * **[Result Set #2 - Summary Statistics](#result-set-2---summary-statistics)**
-  * **[Result Set #3 – Multi-Plan Drill-Down (Plan-Level Metrics)](#result-set-3--multi-plan-drill-down-plan-level-metrics)**
-  * **[Result Set #4 - Dominant Plan Shape Comparison](#result-set-4---dominant-plan-shape-comparison)**
-  * **[ConfidenceFlags Explained](#confidenceflags-explained)**
-  * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
-  * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
-  * **[Outcome of This Step](#outcome-of-this-step)**
 <br/>
 
 ## Upgrading Compatibility Level
