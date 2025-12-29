@@ -125,7 +125,7 @@ If you have completed the first four steps on the replay server, meaning the dat
 
 At the beginning of the document, I shared the documentation links that walk through how to set up and run XEvent Query Replayer. To avoid issues during replay, make sure you follow those steps carefully and verify that the tool is fully operational before starting the replay process.
 
-<img width="581" height="360" alt="step5" src="https://github.com/user-attachments/assets/9aaab72a-c1ea-4ff9-aa34-b31ab5db5e04" />
+<img width="581" height="363" alt="step5" src="https://github.com/user-attachments/assets/f14f66b0-fccf-4b31-90fa-909f541456df" />
 
 <br/>
 
