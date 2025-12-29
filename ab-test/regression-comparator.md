@@ -337,7 +337,17 @@ This is why the default analysis workflow prioritizes ImpactScore over ratios, a
 
 
 ## Result Sets Overview
-The script produces multiple result sets, each serving a specific analytical purpose.
+
+The script produces multiple result sets, each designed to answer a different analytical question during a compatibility level A/B comparison.  
+Rather than forcing all information into a single, overloaded output, the results are intentionally separated to support a structured analysis workflow.
+
+Each result set builds on the previous one:
+
+- The first result set identifies where regressions exist and how severe they are
+- Subsequent result sets explain why those regressions occurred, focusing on plan behavior and execution characteristics
+- Later result sets provide diagnostic detail needed for root-cause analysis and mitigation decisions
+
+This layered output model allows engineers to move from high-level risk identification to low-level plan analysis without losing context, while keeping each result set focused, readable, and purpose-driven.
 
 
 ## Result Set #1 – Regression Overview (Primary Analysis View)
