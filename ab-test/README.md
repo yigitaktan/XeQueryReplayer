@@ -265,4 +265,21 @@ You can find the analysis script in the [step-18.sql](https://github.com/yigitak
 
 Before running it, make sure you review and adjust the parameter sections at the top of the script according to your own environment and analysis needs. These parameters directly affect how the comparison and regression analysis are performed, so tailoring them correctly is essential for meaningful results.
 
+### What the Script Does
+The Query Store CL Regression Comparator script performs the following actions:
+
+- Aggregates Query Store runtime statistics separately for each database
+- Normalizes queries using a configurable grouping strategy
+- Compares execution metrics between lower CL and higher CL
+- Calculates regression indicators such as ratios and impact scores
+- Flags confidence and risk conditions
+- Provides plan-level drill-down for multi-plan scenarios
+- Optionally persists raw comparison results for historical tracking
+
+The script is intentionally designed to be:
+
+- Compatibility-level aware
+- Replay-friendly
+- Deterministic and repeatable
+- Focused on impact, not just ratios
 
