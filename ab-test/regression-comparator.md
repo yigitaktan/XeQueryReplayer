@@ -16,7 +16,7 @@ The script is intentionally designed to be:
 - Deterministic and repeatable
 - Focused on impact, not just ratios
 
-
+* **[Quick Start](#quick-start)**
 * **[Script Parameters and Execution Model](#script-parameters-and-execution-model)**
 * **[How Queries Are Grouped](#how-queries-are-grouped)**
 * **[Metric Selection](#metric-selection-1)**
@@ -34,10 +34,10 @@ The script is intentionally designed to be:
 
 ## Quick Start
 
-> NOTE:
-> The full implementation is available here: [Query Store CL Regression Comparator – SQL Script](./QueryStore_CL_Regression_Comparator.sql)
+> [!NOTE]
+> You can access and download the full script from here: [Query Store CL Regression Comparator – SQL Script](./QueryStore_CL_Regression_Comparator.sql)
 
-This quick start is designed to get you from “two Query Store datasets” to a ranked regression list in a few minutes.
+This quick start is designed to get you from "two Query Store datasets" to a ranked regression list in a few minutes.
 
 ### What you need
 
