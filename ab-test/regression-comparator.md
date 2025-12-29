@@ -50,12 +50,6 @@ The script is intentionally designed to be:
   * **[Step 10 - Document and Persist Results](#step-10---document-and-persist-results)**
 * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
 * **[Analytical Deliverables and Decision Readiness](#analytical-deliverables-and-decision-readiness)**
-* **[]()**
-* **[]()**
-* **[]()**
-* **[]()**
-* **[]()**
-* **[]()**
 
 
 ## Script Parameters and Execution Model
