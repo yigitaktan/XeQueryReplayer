@@ -275,6 +275,21 @@ This weighting model is applied consistently across:
 
 Without weighted aggregation, A/B analysis can easily misrepresent reality, especially in workloads with uneven execution distributions.
 
+## Regression Detection Methodology
+
+The script intentionally does not treat every metric increase as a problem. Instead, it is designed to answer a more important question:
+
+**“Does this change materially hurt the system?”**
+
+For that reason:
+
+- **RegressionRatio** indicates direction and magnitude
+- **ImpactScore** indicates real-world cost
+
+A query with a high ratio but low execution count is often irrelevant. Conversely, a moderate ratio applied to a high-frequency query can represent a severe regression.
+
+This is why the default analysis workflow prioritizes **ImpactScore over ratios**, and why filtering thresholds are designed to reduce noise rather than hide risk.
+
 
 ## Result Sets Overview
 The script produces multiple result sets, each serving a specific analytical purpose.
@@ -310,22 +325,6 @@ Key Columns and How to Read Them:
 > - Sort by ImpactScore descending - this surfaces what actually hurts the system
 > - A high RegressionRatio with a low ImpactScore is often negligible
 > - A moderate ratio with a high ImpactScore deserves immediate attention
-
-
-## Regression Detection Methodology
-
-The script intentionally does not treat every metric increase as a problem. Instead, it is designed to answer a more important question:
-
-**“Does this change materially hurt the system?”**
-
-For that reason:
-
-- **RegressionRatio** indicates direction and magnitude
-- **ImpactScore** indicates real-world cost
-
-A query with a high ratio but low execution count is often irrelevant. Conversely, a moderate ratio applied to a high-frequency query can represent a severe regression.
-
-This is why the default analysis workflow prioritizes **ImpactScore over ratios**, and why filtering thresholds are designed to reduce noise rather than hide risk.
 
 
 ## Result Set #2 - Summary Statistics
