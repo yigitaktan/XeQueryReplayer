@@ -19,7 +19,7 @@
 ## Quick Start
 
 > [!NOTE]
-> You can access and download the full script from here: [Query Store CL Regression Comparator – SQL Script](./regression-comparator.sql)
+> You can access and download the full script from here: [Query Store CL Regression Comparator](./regression-comparator.sql)
 
 This quick start is designed to get you from "two Query Store datasets" to a ranked regression list in a few minutes.
 
