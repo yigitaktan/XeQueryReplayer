@@ -36,13 +36,15 @@ That said, if your goal is to complete the replay as quickly as possible, the be
 All required details for installing and configuring XEvent Query Replayer are covered in the documentation linked below:
 
 - [Getting started with the script](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#getting-started-with-the-script)
-- Script components
-- Prerequisites
-- Preparing the config.txt file
-- Running the script
-- Encoding requirement
-- Creating the test environment
-- PowerShell execution policy settings
-- Logging
-- Errors
+- [Script components](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#script-components)
+- [Prerequisites](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#prerequisites)
+- [Preparing the config.txt file](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#preparing-the-configtxt-file)
+- [Running the script](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#running-the-script)
+- [Encoding requirement](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#encoding-requirement)
+- [Creating the test environment](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#creating-the-test-environment)
+- [PowerShell execution policy settings](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#powershell-execution-policy-settings)
+- [Logging](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#logging)
+- [Errors](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#errors)
+
+- 
 
