@@ -11,7 +11,7 @@
 * **[Result Set #2 - Summary Statistics](#result-set-2---summary-statistics)**
 * **[Result Set #3 – Multi-Plan Drill-Down (Plan-Level Metrics)](#result-set-3--multi-plan-drill-down-plan-level-metrics)**
 * **[Result Set #4 - Dominant Plan Shape Comparison](#result-set-4---dominant-plan-shape-comparison)**
-* **[Understanding ConfidenceFlags](#confidenceflags-explained)**
+* **[Understanding ConfidenceFlags](#understanding-confidenceflags)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
 * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
 * **[Analytical Deliverables and Decision Readiness](#analytical-deliverables-and-decision-readiness)**
