@@ -3,7 +3,7 @@ The Query Store CL Regression Comparator script performs the following actions:
 
 - Aggregates Query Store runtime statistics separately for each database
 - Normalizes queries using a configurable grouping strategy
-- Compares execution metrics between lower CL and higher CL
+- Compares execution metrics between lower compatibility level and higher compatibility level
 - Calculates regression indicators such as ratios and impact scores
 - Flags confidence and risk conditions
 - Provides plan-level drill-down for multi-plan scenarios
@@ -19,7 +19,7 @@ The script is intentionally designed to be:
 
 ## Script Parameters and Execution Model
 
-The script is designed to be fully deterministic and operator-driven. In other words, the output is entirely shaped by the parameter block at the top of the script. Those parameters control **which two Query Store snapshots are compared**, **how queries are correlated**, **what metric is evaluated**, **what qualifies as a regression**, and **whether results are persisted for historical tracking**.
+The script is designed to be fully deterministic and operator-driven. In other words, the output is entirely shaped by the parameter block at the top of the script. Those parameters control which two Query Store snapshots are compared, how queries are correlated, what metric is evaluated, what qualifies as a regression, and whether results are persisted for historical tracking.
 
 At a high level, the script runs in four phases:
 
@@ -32,11 +32,11 @@ The same Query Store data combined with the same parameter values will always pr
 
 ### Database Inputs
 
-- `@DbA` (LowerCL / Baseline database)  
+- `@DbA` (Baseline database)  
   The database containing Query Store data from the **lower compatibility level** replay.  
   Example: `DemoDB_CL120`
 
-- `@DbB` (HigherCL / Candidate database)  
+- `@DbB` (Candidate database)  
   The database containing Query Store data from the **higher compatibility level** replay.  
   Example: `DemoDB_CL170`
 
@@ -64,12 +64,12 @@ These two databases are treated as independent evidence sources. The script neve
 
   **Behavior**:
   - If `NULL`, the script does not enforce a minimum ratio and will output everything that worsened (useful for broad discovery).
-  - If set (e.g., `1.25`), only groups that are at least **25% worse** in HigherCL will be included in the primary regression result set.
+  - If set (e.g., `1.25`), only groups that are at least **25% worse** in higher compatibility level will be included in the primary regression result set.
 
 > [!TIP]
 > - Start with something like `1.25` for initial triage.
 > - Move to `1.10` if you need to catch smaller regressions with high impact.
-> - Move to `1.50+` when you only care about “obviously bad” regressions.
+> - Move to `1.50+` when you only care about "obviously bad" regressions.
 
 - `@TopN`  
   Limits the output to the top N rows after sorting by impact or ranking logic.  
@@ -77,7 +77,7 @@ These two databases are treated as independent evidence sources. The script neve
 
   **Behavior**:
   - If `NULL`, no limit is applied.
-  - If set (e.g., `100`), returns the top 100 regressions based on the script’s ranking (typically ImpactScore descending).
+  - If set (e.g., `100`), returns the top 100 regressions based on the script's ranking (typically ImpactScore descending).
 
 > [!TIP]
 > Use `@TopN` for iterative tuning cycles where you only want to focus on the worst offenders first.
@@ -119,7 +119,7 @@ These two databases are treated as independent evidence sources. The script neve
 ### Query Grouping Strategy
 
 - `@GroupBy`  
-  Defines how the script correlates “the same logical query” across LowerCL and HigherCL.
+  Defines how the script correlates "the same logical query" across lower compatibility level and higher compatibility level.
 
   Supported values:
   - `QueryHash`  
@@ -202,7 +202,7 @@ These two databases are treated as independent evidence sources. The script neve
   Persisting allows you to:
   - Compare multiple replay runs over time
   - Track whether regressions improved after tuning
-  - Build a history of “known offenders” per database / CL pair
+  - Build a history of "known offenders" per database / CL pair
   - Integrate results into a broader pipeline (reporting, dashboards, automation)
 
 - `@ResultsTable`  
@@ -216,7 +216,7 @@ These two databases are treated as independent evidence sources. The script neve
 
 ## How Queries Are Grouped
 
-One of the core challenges in compatibility level A/B testing is reliably correlating the *same logical query* across two different environments. Query IDs and Plan IDs are not stable across restores, replays, or compatibility levels, so direct ID comparison is not sufficient.
+One of the core challenges in compatibility level A/B testing is reliably correlating the same logical query across two different environments. Query IDs and Plan IDs are not stable across restores, replays, or compatibility levels, so direct ID comparison is not sufficient.
 
 To solve this, the script uses a configurable **logical grouping strategy**, controlled by the `@GroupBy` parameter.
 
@@ -232,7 +232,7 @@ This approach allows the script to:
 
 - Correlate queries even when `query_id` values differ
 - Tolerate minor plan or compilation differences
-- Focus analysis on *logical behavior*, not physical identifiers
+- Focus analysis on logical behavior, not physical identifiers
 
 Choosing the correct grouping strategy is critical. Overly strict grouping can fragment results, while overly loose grouping can mix unrelated queries. For most workloads, `QueryHash` provides the best balance.
 
@@ -268,7 +268,7 @@ This ensures that:
 
 This weighting model is applied consistently across:
 
-- LowerCL and HigherCL
+- Lower CL and Higher CL
 - Group-level aggregation
 - Plan-level drill-down
 - ImpactScore calculation
@@ -293,14 +293,14 @@ Key Columns and How to Read Them:
 | Column                   | Meaning                                                                                                                                   |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `GroupKeyHashHex`        | Unique identifier for the logical query group                                                                                             |
-| `DominantQueryId_L-H`    | **LowerCL–HigherCL** dominant `query_id` range for the group (the `query_id` that contributed the most to executions/impact on each side) |
-| `QueryIdRange_L-H`       | `query_id` ranges observed in **LowerCL–HigherCL** for the group                                                                          |
-| `DominantPlanId_L-H`     | **LowerCL–HigherCL** dominant `plan_id` range for the group (the `plan_id` that was most prevalent / most executed on each side)          |
-| `PlanCount_L-H`          | Number of **distinct** cached/executed plans per side (**LowerCL–HigherCL**)                                                              |
-| `ExecCount_L-H`          | Total executions per side (**LowerCL–HigherCL**)                                                                                          |
-| `Avg<Metric>_L-H`        | Average metric value per execution (**LowerCL–HigherCL**)                                                                                 |
+| `DominantQueryId_L-H`    | LowerCL-HigherCL dominant `query_id` range for the group (the `query_id` that contributed the most to executions/impact on each side) |
+| `QueryIdRange_L-H`       | `query_id` ranges observed in LowerCL-HigherCL for the group                                                                          |
+| `DominantPlanId_L-H`     | LowerCL-HigherCL dominant `plan_id` range for the group (the `plan_id` that was most prevalent / most executed on each side)          |
+| `PlanCount_L-H`          | Number of distinct cached/executed plans per side (LowerCL-HigherCL)                                                              |
+| `ExecCount_L-H`          | Total executions per side (LowerCL-HigherCL)                                                                                          |
+| `Avg<Metric>_L-H`        | Average metric value per execution (LowerCL-HigherCL)                                                                                 |
 | `DeltaAvgMetric`         | `Avg<Metric>_H − Avg<Metric>_L` (absolute change in average metric from LowerCL to HigherCL)                                              |
-| `Total<Metric>_L-H`      | Total metric consumption (**LowerCL–HigherCL**)                                                                                           |
+| `Total<Metric>_L-H`      | Total metric consumption (LowerCL-HigherCL)                                                                                           |
 | `RegressionRatio`        | `Avg<Metric>_H / NULLIF(Avg<Metric>_L, 0)` (how much worse/better HigherCL is vs LowerCL)                                                 |
 | `ImpactScore`            | `(Avg<Metric>_H − Avg<Metric>_L) × ExecCount_H` (estimated total delta impact in HigherCL execution volume)                               |
 | `ConfidenceFlags`        | Signals that affect trustworthiness (e.g., low executions, high plan count instability, missing side, text/hash mismatch, etc.)           |
@@ -312,7 +312,7 @@ Key Columns and How to Read Them:
 > - A moderate ratio with a high ImpactScore deserves immediate attention
 
 
-## Regression Detection Philosophy
+## Regression Detection Methodology
 
 The script intentionally does not treat every metric increase as a problem. Instead, it is designed to answer a more important question:
 
@@ -320,8 +320,8 @@ The script intentionally does not treat every metric increase as a problem. Inst
 
 For that reason:
 
-- **RegressionRatio** indicates *direction and magnitude*
-- **ImpactScore** indicates *real-world cost*
+- **RegressionRatio** indicates direction and magnitude
+- **ImpactScore** indicates real-world cost
 
 A query with a high ratio but low execution count is often irrelevant. Conversely, a moderate ratio applied to a high-frequency query can represent a severe regression.
 
@@ -388,7 +388,7 @@ The ConfidenceFlags column helps interpret reliability:
 | LOW_EXEC              | The execution count on one or both sides is below the configured @MinExecCount threshold. Results with this flag should be treated with lower confidence due to insufficient sample size. |
 | MULTI_PLAN            | Multiple execution plans were observed for the same query/group. This may indicate parameter sensitivity, plan instability, or optimizer behavior changes across compatibility levels. |
 | INTERVAL_END_FALLBACK | The Query Store runtime statistics interval does not expose a reliable end_time column (engine-version dependent). The script fell back to using the maximum observed start_time, which may slightly reduce temporal precision. |
-| WEIGHTED_TOTAL        | Metrics were calculated using execution-count–weighted aggregation (SUM(avg_metric × execution_count)), ensuring that frequently executed plans contribute proportionally more to totals and averages. This improves accuracy compared to simple averages, especially for uneven execution distributions. |
+| WEIGHTED_TOTAL        | Metrics were calculated using execution-count-weighted aggregation (SUM(avg_metric × execution_count)), ensuring that frequently executed plans contribute proportionally more to totals and averages. This improves accuracy compared to simple averages, especially for uneven execution distributions. |
 
 > [!NOTE]
 > - WEIGHTED_TOTAL is not a warning. It is an informational confidence indicator stating that the metric math is based on statistically correct, weighted aggregation.
@@ -399,19 +399,206 @@ Flags do not automatically invalidate results, but they require engineering judg
 
 
 ## Recommended Analysis Workflow
-1. Start with Result Set #1
-2. Sort by ImpactScore
-3.	Identify top-impact regressions
-4.	Check ConfidenceFlags
-5.	If MULTI_PLAN exists:
-    - Drill into Result Set #3
-    - Identify dominant plans
-6.	Use Result Set #4 to understand why the regression happened
-7.	Decide on mitigation:
-    - Query rewrite
-    - Index changes
-    - Plan forcing
-    - Compatibility-level scoped fixes
+
+This section describes a **practical, step-by-step workflow** for analyzing Query Store results produced by the Query Store CL Regression Comparator script.  
+The goal is to move from **raw regression signals** to **actionable engineering decisions** in a controlled and repeatable way.
+
+The workflow is intentionally ordered. Skipping steps often leads to false positives, misinterpretation, or unnecessary mitigation work.
+
+---
+
+### Step 1 – Start with Result Set #1 (Regression Overview)
+
+Always begin with **Result Set #1**, which provides the high-level regression overview.
+
+Actions:
+- Sort the result set by **ImpactScore** in descending order
+- Focus on the **top-impact queries first**, not on the highest regression ratios
+
+Why:
+- ImpactScore reflects *real workload impact*, not just relative degradation
+- A query that regresses slightly but runs thousands of times is usually more important than a query that regresses heavily but runs rarely
+
+> NOTE:  
+> A high `RegressionRatio` without a correspondingly high `ImpactScore` is often operationally insignificant.
+
+---
+
+### Step 2 – Validate Execution Volume and Confidence Signals
+
+Before deep analysis, validate that the regression signal is trustworthy.
+
+Actions:
+- Review `ExecCount_L-H`
+- Inspect the `ConfidenceFlags` column carefully
+
+Key checks:
+- Queries flagged with **LOW_EXEC** may be statistical noise
+- Queries flagged with **MISSING_ONE_SIDE** often indicate workload drift or replay mismatch
+- Queries flagged with **INTERVAL_END_FALLBACK** require careful time-window interpretation
+
+Why:
+- Query Store aggregates are only meaningful when sample size is sufficient
+- Confidence flags exist to prevent premature conclusions
+
+> RULE OF THUMB:  
+> Do not invest deep analysis effort until execution volume and confidence flags look reasonable.
+
+---
+
+### Step 3 – Identify Plan Instability (MULTI_PLAN Detection)
+
+Next, determine whether the regression is associated with plan instability.
+
+Actions:
+- Check the `PlanCount_L-H` column
+- Look for the **MULTI_PLAN** confidence flag
+
+Interpretation:
+- `PlanCount_L > 1` or `PlanCount_H > 1` indicates plan churn
+- Plan churn across compatibility levels often signals:
+  - Parameter sensitivity
+  - Cardinality Estimator behavior changes
+  - Different join ordering or join algorithm selection
+
+Why:
+- Plan instability is one of the most common causes of CL-related regressions
+- Treating a plan instability problem as a pure performance problem often leads to incorrect fixes
+
+---
+
+### Step 4 – Drill Down Using Result Set #3 (Multi-Plan Details)
+
+If multi-plan behavior exists, move to **Result Set #3**.
+
+Actions:
+- Identify the **dominant plan** on each side
+- Compare execution distribution across plans
+- Determine whether:
+  - A new, more expensive plan became dominant in HigherCL
+  - The same plan exists but is used less frequently
+
+Key questions:
+- Is one plan responsible for most of the executions?
+- Did plan dominance change between LowerCL and HigherCL?
+- Is the regression caused by plan selection rather than plan cost?
+
+Why:
+- Query Store often contains multiple plans, but only one usually matters
+- Dominant plan analysis prevents chasing irrelevant plans
+
+---
+
+### Step 5 – Compare Dominant Plan Shapes (Result Set #4)
+
+Once the dominant plan is identified, analyze **Result Set #4** to understand *why* the regression occurred.
+
+Actions:
+- Compare operator usage (Index Seek vs Scan, Join types)
+- Review parallelism indicators
+- Inspect memory grant differences and spill indicators
+- Check for missing index signals
+
+Interpretation:
+- Join type changes often point to CE behavior differences
+- Increased memory grants or spills suggest cardinality misestimation
+- Loss of index seeks often explains LogicalReads regressions
+
+Why:
+- Most CL regressions are rooted in plan shape changes, not engine bugs
+- Understanding the plan shape prevents blind mitigation
+
+---
+
+### Step 6 – Correlate with Metric Type
+
+Always interpret findings in the context of the selected metric.
+
+Guidelines:
+- **LogicalReads** regressions usually indicate plan efficiency issues
+- **CPU** regressions often correlate with operator changes or parallelism
+- **Duration** regressions may involve blocking, waits, or concurrency effects
+
+Why:
+- The same plan change can have different implications depending on the metric
+- Misaligned metric interpretation leads to incorrect conclusions
+
+---
+
+### Step 7 – Eliminate Common False Positives
+
+Before taking action, explicitly rule out common false positives.
+
+Checklist:
+- [ ] Execution count sufficient on both sides
+- [ ] Same statement type (SELECT vs DML)
+- [ ] No significant workload drift
+- [ ] No known stats updates between replays
+- [ ] Replay environment comparable across rounds
+
+Why:
+- Query Store captures *what happened*, not *why it happened*
+- Context matters as much as metrics
+
+---
+
+### Step 8 – Decide on Mitigation Strategy
+
+Only after completing the previous steps should mitigation be considered.
+
+Possible actions:
+- Plan forcing (temporary or scoped)
+- Query-level hints (e.g., `OPTIMIZE FOR`, `USE HINT`)
+- Index or statistics adjustments
+- Query rewrite
+- Compatibility-level scoped optimizer hints
+
+Decision factors:
+- Regression severity
+- Query criticality
+- Plan stability
+- Long-term maintainability
+
+> IMPORTANT:  
+> Plan forcing should be a last resort, not the default response.
+
+---
+
+### Step 9 – Re-Validate After Mitigation
+
+After applying mitigation:
+- Re-run the replay
+- Re-execute the comparator script
+- Confirm that:
+  - Regression is resolved
+  - No new regressions were introduced
+
+Why:
+- Every fix has a blast radius
+- Re-validation closes the A/B testing loop
+
+---
+
+### Step 10 – Document and Persist Results
+
+Finally, persist findings for traceability.
+
+Actions:
+- Store results using `@PersistResults`
+- Capture:
+  - Original regression
+  - Root cause
+  - Mitigation applied
+  - Post-fix validation outcome
+
+Why:
+- CL upgrades are rarely one-off events
+- Historical regression knowledge compounds in value over time
+
+---
+
+Following this workflow ensures that compatibility level upgrades are evaluated **systematically**, **defensively**, and **with engineering discipline**, minimizing both performance risk and unnecessary remediation work.
+
 
 
 ## Typical Troubleshooting Questions
