@@ -196,3 +196,50 @@ Once you have confirmed all of that, you can run XEvent Query Replayer and repla
 
 <img width="580" height="360" alt="step13" src="https://github.com/user-attachments/assets/f90fe9f5-68b6-4e50-8b3d-edf0547c509e" />
 
+
+## Step 14 / Round 2 - Verify Collected Data
+After the replay operation completes, this step is used to verify that the replayed workload has been successfully captured by Query Store.
+
+At this stage, you check whether the replayed queries are properly logged in Query Store, confirming that the metadata required for analysis is available before moving forward. To do this, run the [step-14.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-14.sql) script.
+
+
+## Step 15 / Round 2 - Extracting Query Store Data
+Just like in Round 1, once you have confirmed that the replayed workload is present in Query Store, you can get rid of the bulky user data to avoid wasting disk space on the replay server.
+
+At this point, we only need the Query Store metadata for analysis. So we use [DBCC CLONEDATABASE](https://learn.microsoft.com/en-us/sql/t-sql/database-console-commands/dbcc-clonedatabase-transact-sql?view=sql-server-ver17) to create a clone of the database that does not include user table data, but does retain the Query Store metadata from the replay. This gives us a much smaller database footprint while preserving everything we need for the A/B comparison. To create the database clone at this stage, simply run the [step-15.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-15.sql) script.
+
+
+## Step 16 / Round 2 - Verify the Clone
+Just like we did in Step 8 during Round 1, at this stage we need to verify that the newly created clone contains Query Store data only and does not include any user table data.
+
+To validate this, we run the [step-16.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-16.sql) script. This check confirms that the clone was created correctly and is ready to be used for analysis.
+
+<img width="625" height="275" alt="step16" src="https://github.com/user-attachments/assets/a3e99911-c9a2-4889-a972-4ea66c9f1f4f" />
+
+
+## Step 17 / Round 2 - Removing the Restored Database
+Once you have confirmed that the Query Store data is present in the clone, you can safely drop the original DemoDB that still contains user data.
+
+To do this, simply run the [step-17.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-17.sql) script.
+
+
+## Step 18 / Analysis Time
+The purpose of this step is to identify, quantify, and explain query performance regressions that occur after a compatibility level change, using Query Store data collected during replay.
+
+At this point in the A/B testing workflow:
+
+- Production workload has already been replayed on both environments
+- Query Store has captured execution statistics for both sides
+- The goal is no longer data collection, but evidence-based analysis
+
+This step provides a deterministic, query-level comparison between two databases running at different compatibility levels (LowerCL vs HigherCL), allowing engineers to:
+
+- Detect regressions that matter
+- Rank them by real impact
+- Understand whether regressions are caused by plan instability, plan shape changes, or execution behavior differences
+
+You can find the analysis script in the [step-18.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-18.sql) file. The script should be executed as a single, complete batch, it is not designed to be run in parts.
+
+Before running it, make sure you review and adjust the parameter sections at the top of the script according to your own environment and analysis needs. These parameters directly affect how the comparison and regression analysis are performed, so tailoring them correctly is essential for meaningful results.
+
+
