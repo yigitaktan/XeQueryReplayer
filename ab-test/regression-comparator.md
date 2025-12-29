@@ -17,6 +17,28 @@ The script is intentionally designed to be:
 - Focused on impact, not just ratios
 
 
+* **[Script Parameters and Execution Model](#script-parameters-and-execution-model)**
+  * **[Database Inputs](#database-inputs)
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+* **[]()
+
+
 ## Script Parameters and Execution Model
 
 The script is designed to be fully deterministic and operator-driven. In other words, the output is entirely shaped by the parameter block at the top of the script. Those parameters control which two Query Store snapshots are compared, how queries are correlated, what metric is evaluated, what qualifies as a regression, and whether results are persisted for historical tracking.
