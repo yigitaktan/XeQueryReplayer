@@ -36,8 +36,8 @@ SET NOCOUNT ON;
 -- Parameters
 ----------------------------------------------------------------------------------------
 DECLARE
-      @DbA sysname                     = N'DemoDB_CL120'           -- input A
-    , @DbB sysname                     = N'DemoDB_CL170'           -- input B
+      @DbA sysname                     = N'DemoDB_CL120'           -- Baseline database (LowerCL)
+    , @DbB sysname                     = N'DemoDB_CL170'           -- Candidate database (HigherCL)
     , @MinExecCount bigint             = NULL                      -- e.g. 50
     , @MinRegressionRatio decimal(9,4) = NULL                      -- e.g. 1.25
     , @TopN int                        = NULL                      -- e.g. 100
@@ -50,7 +50,7 @@ DECLARE
     , @IncludeSP bit                   = 1                         -- 1 | 0
     , @OnlyMultiPlan bit               = 0                         -- 1 | 0
     , @PersistResults bit              = 1                         -- 1 | 0
-    , @ResultsTable sysname            = N'dbo.QueryStoreCLRegressionResults';
+    , @ResultsTable sysname            = N'dbo.RegressionResults';
 
 ----------------------------------------------------------------------------------------
 -- Validation
