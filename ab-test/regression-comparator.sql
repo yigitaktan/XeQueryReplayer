@@ -4,12 +4,8 @@
 ╠══════════════════════════════════════════════════════════════════════════════════════════════════════════╩══════╣
 ║  PURPOSE                                                                                                        ║
 ║  ───────                                                                                                        ║
-║  This script performs a deterministic, execution-weighted comparison of Query Store data between two databases  ║
-║  running at different SQL Server compatibility levels.                                                          ║
-║                                                                                                                 ║
-║  It is primarily designed to support A/B testing workflows during compatibility level upgrades,                 ║
-║  allowing engineers to detect, quantify, and explain query performance regressions introduced                   ║
-║  by optimizer, cardinality estimator, or plan selection changes.                                                ║
+║  Compares Query Store data between two databases running at different compatibility levels.                     ║
+║  Designed for A/B testing during CL upgrades to identify, quantify, and analyze query performance regressions.  ║
 ╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
 ║  DOCUMENTATION                                                                                                  ║
 ║  ─────────────                                                                                                  ║
@@ -17,10 +13,7 @@
 ╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
 ║  DISCLAIMER                                                                                                     ║
 ║  ──────────                                                                                                     ║
-║  This script is provided as-is, without warranty of any kind. While it has been designed and tested             ║
-║  for repeatable and deterministic analysis, it may require adaptation for specific environments,                ║
-║  workloads, or SQL Server versions.                                                                             ║
-║                                                                                                                 ║
+║  Provided as-is, without warranty. Results depend on workload replay quality and Query Store accuracy.          ║
 ║  The author assumes no responsibility for unintended consequences resulting from its use.                       ║
 ╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
 ║  AUTHOR                                                                                                         ║
@@ -32,9 +25,9 @@
 
 SET NOCOUNT ON;
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Parameters
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 DECLARE
       @DbA sysname                     = N'DemoDB_CL120'           -- Baseline database (LowerCL)
     , @DbB sysname                     = N'DemoDB_CL170'           -- Candidate database (HigherCL)
@@ -52,9 +45,9 @@ DECLARE
     , @PersistResults bit              = 0                         -- 1 | 0
     , @ResultsTable sysname            = N'dbo.RegressionResults';
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Validation
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 IF @Metric NOT IN (N'LogicalReads', N'CPU', N'Duration')
     THROW 50001, 'Invalid @Metric. Use LogicalReads, CPU, or Duration.', 1;
 
@@ -78,9 +71,9 @@ IF @StatementType NOT IN ('ALL','SELECT','INSERT','UPDATE','DELETE')
 IF @OnlyMultiPlan NOT IN (0,1)
     THROW 50007, 'Invalid @OnlyMultiPlan. Use 0 (everything) or 1 (only MULTI_PLAN).', 1;
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Resolve compatibility levels for A/B, then map to Lower/Higher
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 DECLARE
       @CL_A smallint = NULL
     , @CL_B smallint = NULL
@@ -120,9 +113,9 @@ END;
 SET @LabelLower  = CONCAT(N'CL', @LowerCL);
 SET @LabelHigher = CONCAT(N'CL', @HigherCL);
 
-----------------------------------------------------------------------------------------
--- Temp tables
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
+-- Temp table
+-------------------------------------------------------------------------------------------------------------------
 IF OBJECT_ID('tempdb..#QS_Agg') IS NOT NULL DROP TABLE #QS_Agg;
 CREATE TABLE #QS_Agg
 (
@@ -146,9 +139,9 @@ CREATE TABLE #QS_Agg
     ConfidenceNote        varchar(50)    NOT NULL
 );
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Detect whether runtime_stats_interval has end_time (per Lower/Higher DB)
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 DECLARE @HasEndTime_L bit = 0, @HasEndTime_H bit = 0;
 DECLARE @chk nvarchar(max);
 
@@ -172,9 +165,9 @@ SELECT @HasEndTimeOut =
     ) THEN 1 ELSE 0 END;';
 EXEC sp_executesql @chk, N'@HasEndTimeOut bit OUTPUT', @HasEndTimeOut=@HasEndTime_H OUTPUT;
 
-----------------------------------------------------------------------------------------
--- Dynamic SQL template: aggregate one DB into #QS_Agg
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
+-- Dynamic SQL: aggregate one DB into #QS_Agg
+-------------------------------------------------------------------------------------------------------------------
 DECLARE @tmpl nvarchar(max) = N'
 INSERT INTO #QS_Agg
 (
@@ -318,9 +311,9 @@ GROUP BY
       END;
 ';
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Build and execute per Lower/Higher DB
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 DECLARE @sqlL nvarchar(max) =
     REPLACE(
       REPLACE(
@@ -351,9 +344,9 @@ EXEC sp_executesql
     N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
     @DbName=@DbHigher, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Compare (internal columns use _L/_H)
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 IF OBJECT_ID('tempdb..#Compare') IS NOT NULL DROP TABLE #Compare;
 CREATE TABLE #Compare
 (
@@ -440,9 +433,9 @@ FULL OUTER JOIN b
  AND ISNULL(a.QueryType,'') = ISNULL(b.QueryType,'')
  AND ISNULL(a.ObjName,'')   = ISNULL(b.ObjName,'');
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Build filtered group set and compute DominantPlanId/QueryId for Resultset#1 + Persist
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 IF OBJECT_ID('tempdb..#FilteredGroups') IS NOT NULL DROP TABLE #FilteredGroups;
 CREATE TABLE #FilteredGroups
 (
@@ -663,9 +656,9 @@ FULL OUTER JOIN (SELECT * FROM #DominantPlans_All WHERE SourceDb = @DbHigher) b
  AND ISNULL(a.QueryType,'') = ISNULL(b.QueryType,'')
  AND ISNULL(a.ObjName,'')   = ISNULL(b.ObjName,'');
 
-----------------------------------------------------------------------------------------
--- Resultset #1: Simplified output + dominant columns + 2 decimals + ' - ' separator
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
+-- Resultset #1: Primary analysis view
+-------------------------------------------------------------------------------------------------------------------
 DECLARE @out1 nvarchar(max) = N'
 ;WITH filtered AS
 (
@@ -725,9 +718,9 @@ EXEC sp_executesql
     N'@TopN int, @MinExecCount bigint, @MinRegressionRatio decimal(9,4), @OnlyMultiPlan bit',
     @TopN=@TopN, @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio, @OnlyMultiPlan=@OnlyMultiPlan;
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Resultset #2: Summary
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 ;WITH filtered AS
 (
     SELECT *
@@ -752,9 +745,9 @@ SELECT
     , CONVERT(decimal(19,2), ROUND(AVG(RegressionRatio), 2)) AS AvgRegressionRatio
 FROM filtered;
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Resultset #3 + #4: MULTI-PLAN only
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 IF OBJECT_ID('tempdb..#MultiGroups') IS NOT NULL DROP TABLE #MultiGroups;
 CREATE TABLE #MultiGroups
 (
@@ -783,9 +776,9 @@ WHERE f.ConfidenceFlags LIKE '%MULTI_PLAN%';
 
 IF EXISTS (SELECT 1 FROM #MultiGroups)
 BEGIN
-    ----------------------------------------------------------------------------------------
-    -- Plan-level aggregation for multi-plan groups
-    ----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
+-- Plan-level aggregation for multi-plan groups
+-------------------------------------------------------------------------------------------------------------------
     IF OBJECT_ID('tempdb..#PlanAgg') IS NOT NULL DROP TABLE #PlanAgg;
     CREATE TABLE #PlanAgg
     (
@@ -973,9 +966,9 @@ BEGIN
         N'@DbName sysname, @Metric sysname, @GroupBy sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
         @DbName=@DbHigher, @Metric=@Metric, @GroupBy=@GroupBy, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
-    ----------------------------------------------------------------------------------------
-    -- Resultset #3: Plan drilldown
-    ----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
+-- Resultset #3: Plan drilldown
+-------------------------------------------------------------------------------------------------------------------
     ;WITH ranked AS
     (
         SELECT
@@ -1028,9 +1021,9 @@ BEGIN
         , RankByAvgMetric
         , RankByExecCount;
 
-    ----------------------------------------------------------------------------------------
-    -- Resultset #4: Dominant plan XML
-    ----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
+-- Resultset #4: Dominant plan XML
+-------------------------------------------------------------------------------------------------------------------
     IF OBJECT_ID('tempdb..#DominantPlans') IS NOT NULL DROP TABLE #DominantPlans;
     CREATE TABLE #DominantPlans
     (
@@ -1345,9 +1338,9 @@ BEGIN
         @DbLower=@DbLower, @DbHigher=@DbHigher, @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio, @OnlyMultiPlan=@OnlyMultiPlan;
 END;
 
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 -- Persist results (DROP + CREATE each run)
-----------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
 IF @PersistResults = 1
 BEGIN
     DECLARE
