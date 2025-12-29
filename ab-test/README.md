@@ -16,5 +16,6 @@ This document focuses on the most critical part of that process: A/B testing. Sp
 
 The diagram below illustrates the entire end-to-end workflow, starting from capturing workload data on the production server and continuing through all subsequent stages of the A/B testing and analysis process.
 
-<img width="1040" height="423" alt="Untitled Diagram drawio" src="https://github.com/user-attachments/assets/7ca10520-1d09-469e-9e77-6adc8c0819c3" />
+
+<img width="1196" height="588" alt="2025-12-29_08-43-46" src="https://github.com/user-attachments/assets/fc2d3d88-1cdb-43d8-b1b8-1a2ccb7d6c37" />
 
