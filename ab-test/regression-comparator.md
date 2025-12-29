@@ -1,20 +1,4 @@
 # Query Store CL Regression Comparator
-The Query Store CL Regression Comparator script performs the following actions:
-
-- Aggregates Query Store runtime statistics separately for each database
-- Normalizes queries using a configurable grouping strategy
-- Compares execution metrics between lower compatibility level and higher compatibility level
-- Calculates regression indicators such as ratios and impact scores
-- Flags confidence and risk conditions
-- Provides plan-level drill-down for multi-plan scenarios
-- Optionally persists raw comparison results for historical tracking
-
-The script is intentionally designed to be:
-
-- Compatibility-level aware
-- Replay-friendly
-- Deterministic and repeatable
-- Focused on impact, not just ratios
 
 * **[Quick Start](#quick-start)**
 * **[Script Parameters and Execution Model](#script-parameters-and-execution-model)**
@@ -72,8 +56,8 @@ DECLARE
     , @ResultsTable sysname            = N'dbo.QueryStoreCLRegressionResults';
 ```
 
--- Execute the full script after setting parameters
--- (The script reads these parameters and produces the result sets described below.)
+* Execute the full script after setting parameters
+* (The script reads these parameters and produces the result sets described below.)
 
 
 ## Script Parameters and Execution Model
