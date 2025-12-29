@@ -352,7 +352,7 @@ Each result set builds on the previous one and is intended to be consumed in seq
   This result set is useful for understanding systemic risk and supporting go/no-go decisions.
 
 - **Result Set #3 – Multi-Plan Drill-Down**  
-  Explains *why* a regression may have occurred by exposing plan-level behavior for query groups with multiple execution plans.  
+  Explains why a regression may have occurred by exposing plan-level behavior for query groups with multiple execution plans.  
   It helps identify plan dominance shifts, parameter sensitivity, and plan instability across compatibility levels.
 
 - **Result Set #4 – Dominant Plan Shape Comparison**  
