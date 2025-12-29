@@ -11,7 +11,7 @@
 * **[Result Set #2 - Summary Statistics](#result-set-2---summary-statistics)**
 * **[Result Set #3 – Multi-Plan Drill-Down (Plan-Level Metrics)](#result-set-3--multi-plan-drill-down-plan-level-metrics)**
 * **[Result Set #4 - Dominant Plan Shape Comparison](#result-set-4---dominant-plan-shape-comparison)**
-* **[ConfidenceFlags Explained](#confidenceflags-explained)**
+* **[Understanding ConfidenceFlags](#confidenceflags-explained)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
 * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
 * **[Analytical Deliverables and Decision Readiness](#analytical-deliverables-and-decision-readiness)**
@@ -421,7 +421,7 @@ This view is used to determine:
 - Whether memory or spill behavior changed
 
 
-## ConfidenceFlags Explained
+## Understanding ConfidenceFlags
 The ConfidenceFlags column helps interpret reliability:
 
 | Flag                  | Meaning |
