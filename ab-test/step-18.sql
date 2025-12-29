@@ -1,38 +1,30 @@
 /*
-╔═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
-║  QUERY STORE CL REGRESSION COMPARATOR                                                                           ║
-╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════╦══════╗
+║  QUERY STORE CL REGRESSION COMPARATOR                                                                    ║ v1.5 ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════════╩══════╣
 ║  PURPOSE                                                                                                        ║
-║  -------                                                                                                        ║
+║  ───────                                                                                                        ║
 ║  This script performs a deterministic, execution-weighted comparison of Query Store data between two databases  ║
 ║  running at different SQL Server compatibility levels.                                                          ║
 ║                                                                                                                 ║
 ║  It is primarily designed to support A/B testing workflows during compatibility level upgrades,                 ║
 ║  allowing engineers to detect, quantify, and explain query performance regressions introduced                   ║
 ║  by optimizer, cardinality estimator, or plan selection changes.                                                ║
-║                                                                                                                 ║
-║  The script focuses on *real workload impact*, not just metric deltas, by using execution-count–weighted        ║
-║  aggregation and impact-based ranking.                                                                          ║
 ╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
 ║  DOCUMENTATION                                                                                                  ║
-║  -------------                                                                                                  ║
-║  For detailed usage instructions, parameter explanations, result set interpretation,                            ║
-║  and recommended analysis workflows, refer to the full documentation:                                           ║
-║                                                                                                                 ║
+║  ─────────────                                                                                                  ║
 ║  https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/regression-comparator.md                       ║
-║                                                                                                                 ║
 ╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
 ║  DISCLAIMER                                                                                                     ║
-║  ----------                                                                                                     ║
+║  ──────────                                                                                                     ║
 ║  This script is provided as-is, without warranty of any kind. While it has been designed and tested             ║
 ║  for repeatable and deterministic analysis, it may require adaptation for specific environments,                ║
 ║  workloads, or SQL Server versions.                                                                             ║
 ║                                                                                                                 ║
 ║  The author assumes no responsibility for unintended consequences resulting from its use.                       ║
-║                                                                                                                 ║
 ╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
 ║  AUTHOR                                                                                                         ║
-║  ------                                                                                                         ║
+║  ──────                                                                                                         ║
 ║  Yigit Aktan                                                                                                    ║
 ║  Microsoft | Global Delivery                                                                                    ║
 ╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
