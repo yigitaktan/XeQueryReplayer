@@ -28,6 +28,7 @@
 * **[Step 16 / Round 2 - Verify the Clone](#step-16--round-2---verify-the-clone)**
 * **[Step 17 / Round 2 - Removing the Restored Database](#step-17--round-2---removing-the-restored-database)**
 * **[Step 18 / Analysis Time](#step-18--analysis-time)**
+  * **[What the Script Does](#what-the-script-does)**
 
 <br/>
 
