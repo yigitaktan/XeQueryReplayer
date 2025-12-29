@@ -52,9 +52,9 @@ These two databases are treated as independent evidence sources. The script neve
   - If `NULL`, no minimum is enforced (more complete, but noisier).
   - If set (e.g., `50`), query groups where execution count is below the threshold on one or both sides are flagged (and depending on script logic may be excluded from the primary regression list).
 
-  **Practical guidance**:
-  - Use a higher value when your capture window is short and workload is spiky.
-  - Use a lower value when your capture window is long and you want more coverage.
+> [!TIP]
+> - Use a higher value when your capture window is short and workload is spiky.
+> - Use a lower value when your capture window is long and you want more coverage.
 
 - `@MinRegressionRatio`  
   Controls the minimum regression ratio that qualifies as a “regression candidate.”  
@@ -93,9 +93,8 @@ These two databases are treated as independent evidence sources. The script neve
   **Behavior**:
   - If both are `NULL`, the script analyzes the full available Query Store history in each database.
   - If provided, the script filters Query Store runtime stats intervals to those that overlap the specified window.
-
-  **Important note (engine-version nuance)**:
-  Some SQL Server versions expose limited interval end-time metadata in Query Store. In those cases, the script may fall back to using the maximum observed `start_time` for interval bounding, and it will flag this via `INTERVAL_END_FALLBACK`. This does not invalidate results, but it can slightly reduce temporal precision when slicing narrow windows.
+> [!IMPORTANT]
+> Some SQL Server versions expose limited interval end-time metadata in Query Store. In those cases, the script may fall back to using the maximum observed `start_time` for interval bounding, and it will flag this via `INTERVAL_END_FALLBACK`. This does not invalidate results, but it can slightly reduce temporal precision when slicing narrow windows.
 
 > [!TIP]
 > - Use the widest reasonable window that cleanly maps to your replay period.
