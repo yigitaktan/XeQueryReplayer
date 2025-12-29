@@ -78,11 +78,11 @@ The same Query Store data combined with the same parameter values will always pr
 ### Database Inputs
 
 - `@DbA` (Baseline database)  
-  The database containing Query Store data from the **lower compatibility level** replay.  
+  The database containing Query Store data from the **LowerCL** replay.  
   Example: `DemoDB_CL120`
 
 - `@DbB` (Candidate database)  
-  The database containing Query Store data from the **higher compatibility level** replay.  
+  The database containing Query Store data from the **HigherCL** replay.  
   Example: `DemoDB_CL170`
 
 These two databases are treated as independent evidence sources. The script never assumes that `query_id` or `plan_id` values match between them. Correlation happens through the grouping strategy (`@GroupBy`).
@@ -164,7 +164,7 @@ These two databases are treated as independent evidence sources. The script neve
 ### Query Grouping Strategy
 
 - `@GroupBy`  
-  Defines how the script correlates "the same logical query" across lower compatibility level and higher compatibility level.
+  Defines how the script correlates "the same logical query" across LowerCL and HigherCL.
 
   Supported values:
   - `QueryHash`  
@@ -313,7 +313,7 @@ This ensures that:
 
 This weighting model is applied consistently across:
 
-- Lower CL and Higher CL
+- LowerCL and HigherCL
 - Group-level aggregation
 - Plan-level drill-down
 - ImpactScore calculation
@@ -423,7 +423,7 @@ This view answers:
 
 - Which plan is dominant?
 - Are plans evenly used or skewed?
-- Is a bad plan dominating in higher CL?
+- Is a bad plan dominating in HigherCL?
 
 
 ## Result Set #4 - Dominant Plan Shape Comparison
