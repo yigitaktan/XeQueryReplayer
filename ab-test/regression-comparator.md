@@ -390,7 +390,7 @@ Key Columns and How to Read Them:
 | `QueryTextSample`        | Representative query text for the group (sample to quickly recognize the workload)                                                        |
 
 > [!TIP]
-> - Sort by ImpactScore descending - this surfaces what actually hurts the system
+> - Sort by ImpactScore descending. This surfaces what actually hurts the system
 > - A high RegressionRatio with a low ImpactScore is often negligible
 > - A moderate ratio with a high ImpactScore deserves immediate attention
 
