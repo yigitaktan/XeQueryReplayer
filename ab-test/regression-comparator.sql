@@ -1,7 +1,7 @@
 /*
-+----------------------------------------------------------------------------------------------------------+------+
-|  QUERY STORE CL REGRESSION COMPARATOR                                                                    | v1.5 |
-+----------------------------------------------------------------------------------------------------------+------+
++--------------------------------------------------------------------------------------------------------+--------+
+|  QUERY STORE CL REGRESSION COMPARATOR                                                                  | v1.6.1 |
++--------------------------------------------------------------------------------------------------------+--------+
 |  PURPOSE                                                                                                        |
 |  -------                                                                                                        |
 |  Compares Query Store data between two databases running at different compatibility levels.                     |
@@ -32,7 +32,7 @@ DECLARE
       @DbA sysname                     = N'DemoDB_CL120'           -- Baseline database (LowerCL)
     , @DbB sysname                     = N'DemoDB_CL170'           -- Candidate database (HigherCL)
     , @MinExecCount bigint             = NULL                      -- e.g. 50
-    , @MinRegressionRatio decimal(9,4) = NULL                      -- e.g. 1.25
+    , @MinRegressionRatio decimal(9,4) = 1.10                      -- e.g. 1.25
     , @TopN int                        = NULL                      -- e.g. 100
     , @StartTime datetime2(0)          = NULL                      -- e.g. '2025-12-25 21:48:56'
     , @EndTime   datetime2(0)          = NULL                      -- e.g. '2025-12-25 22:00:00'
@@ -114,7 +114,113 @@ SET @LabelLower  = CONCAT(N'CL', @LowerCL);
 SET @LabelHigher = CONCAT(N'CL', @HigherCL);
 
 -------------------------------------------------------------------------------------------------------------------
--- Temp table
+-- Temp table: Precomputed text + statement type (PERF)
+-------------------------------------------------------------------------------------------------------------------
+IF OBJECT_ID('tempdb..#QS_Text') IS NOT NULL DROP TABLE #QS_Text;
+CREATE TABLE #QS_Text
+(
+    SourceDb         sysname       NOT NULL,
+    query_text_id    bigint        NOT NULL,
+    query_sql_text   nvarchar(max) NULL,
+    NormalizedText   nvarchar(max) NULL,
+    DetectedType     varchar(10)   NULL,
+    CONSTRAINT PK_QS_Text PRIMARY KEY (SourceDb, query_text_id)
+);
+
+DECLARE @textTmpl nvarchar(max) = N'
+;WITH ids AS
+(
+    SELECT DISTINCT q.query_text_id
+    FROM {{DB}}.sys.query_store_query q
+    JOIN {{DB}}.sys.query_store_plan p
+      ON p.query_id = q.query_id
+    JOIN {{DB}}.sys.query_store_runtime_stats rs
+      ON rs.plan_id = p.plan_id
+    JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
+      ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
+    WHERE 1=1
+      AND (
+            (@IncludeSP = 1 AND q.object_id > 0)
+         OR (@IncludeAdhoc = 1 AND (q.object_id = 0 OR q.object_id IS NULL))
+      )
+      AND (@StartTime IS NULL OR rsi.start_time >= @StartTime)
+      AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
+)
+INSERT #QS_Text (SourceDb, query_text_id, query_sql_text, NormalizedText, DetectedType)
+SELECT
+      @DbName AS SourceDb
+    , qt.query_text_id
+    , qt.query_sql_text
+    , LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' '')))) AS NormalizedText
+    , CASE
+          WHEN @StatementType = ''ALL'' THEN NULL
+          ELSE
+          (
+              SELECT TOP (1) v.Typ
+              FROM
+              (
+                  SELECT Typ=''SELECT'',
+                         Pos=CASE
+                                 WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''SELECT%'' THEN 1
+                                 ELSE NULLIF(PATINDEX(''%SELECT%'', UPPER(x.CleanNoParamBlock)),0)
+                             END
+                  UNION ALL
+                  SELECT Typ=''INSERT'',
+                         Pos=CASE
+                                 WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''INSERT%'' THEN 1
+                                 ELSE NULLIF(PATINDEX(''%INSERT%'', UPPER(x.CleanNoParamBlock)),0)
+                             END
+                  UNION ALL
+                  SELECT Typ=''UPDATE'',
+                         Pos=CASE
+                                 WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''UPDATE%'' THEN 1
+                                 ELSE NULLIF(PATINDEX(''%UPDATE%'', UPPER(x.CleanNoParamBlock)),0)
+                             END
+                  UNION ALL
+                  SELECT Typ=''DELETE'',
+                         Pos=CASE
+                                 WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''DELETE%'' THEN 1
+                                 ELSE NULLIF(PATINDEX(''%DELETE%'', UPPER(x.CleanNoParamBlock)),0)
+                             END
+              ) v
+              WHERE v.Pos IS NOT NULL
+              ORDER BY v.Pos ASC
+          )
+      END AS DetectedType
+FROM ids
+JOIN {{DB}}.sys.query_store_query_text qt
+  ON qt.query_text_id = ids.query_text_id
+OUTER APPLY
+(
+    SELECT RawClean =
+        LTRIM(REPLACE(REPLACE(REPLACE(LEFT(qt.query_sql_text, 4000), CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))
+) c0
+OUTER APPLY
+(
+    SELECT CleanNoParamBlock =
+        CASE
+            WHEN c0.RawClean LIKE ''(%'' AND CHARINDEX('')'', c0.RawClean) > 0
+                THEN LTRIM(SUBSTRING(c0.RawClean, CHARINDEX('')'', c0.RawClean) + 1, 4000))
+            ELSE c0.RawClean
+        END
+) x;
+';
+
+DECLARE @textSqlL nvarchar(max) = REPLACE(@textTmpl, N'{{DB}}', QUOTENAME(@DbLower));
+DECLARE @textSqlH nvarchar(max) = REPLACE(@textTmpl, N'{{DB}}', QUOTENAME(@DbHigher));
+
+EXEC sp_executesql
+    @textSqlL,
+    N'@DbName sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+    @DbName=@DbLower, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
+
+EXEC sp_executesql
+    @textSqlH,
+    N'@DbName sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+    @DbName=@DbHigher, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
+
+-------------------------------------------------------------------------------------------------------------------
+-- Temp table: Main aggregation
 -------------------------------------------------------------------------------------------------------------------
 IF OBJECT_ID('tempdb..#QS_Agg') IS NOT NULL DROP TABLE #QS_Agg;
 CREATE TABLE #QS_Agg
@@ -140,7 +246,7 @@ CREATE TABLE #QS_Agg
 );
 
 -------------------------------------------------------------------------------------------------------------------
--- Detect whether runtime_stats_interval has end_time (per Lower/Higher DB)
+-- Detect whether runtime_stats_interval has end_time
 -------------------------------------------------------------------------------------------------------------------
 DECLARE @HasEndTime_L bit = 0, @HasEndTime_H bit = 0;
 DECLARE @chk nvarchar(max);
@@ -166,7 +272,7 @@ SELECT @HasEndTimeOut =
 EXEC sp_executesql @chk, N'@HasEndTimeOut bit OUTPUT', @HasEndTimeOut=@HasEndTime_H OUTPUT;
 
 -------------------------------------------------------------------------------------------------------------------
--- Dynamic SQL: aggregate one DB into #QS_Agg
+-- Dynamic SQL: Aggregate one DB into #QS_Agg
 -------------------------------------------------------------------------------------------------------------------
 DECLARE @tmpl nvarchar(max) = N'
 INSERT INTO #QS_Agg
@@ -187,13 +293,13 @@ SELECT
     , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
           CASE
               WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
-              WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
-              ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
+              WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+              ELSE t.NormalizedText
           END
       )) AS GroupKeyHash
     , q.query_hash
-    , qt.query_sql_text AS QueryTextSample
-    , LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' '')))) AS NormalizedTextSample
+    , MIN(t.query_sql_text) AS QueryTextSample
+    , MIN(t.NormalizedText) AS NormalizedTextSample
     , MIN(q.query_id) AS QueryIdMin
     , MAX(q.query_id) AS QueryIdMax
     , COUNT(DISTINCT p.plan_id) AS PlanCount
@@ -231,64 +337,13 @@ JOIN {{DB}}.sys.query_store_runtime_stats rs
   ON rs.plan_id = p.plan_id
 JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
   ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
-JOIN {{DB}}.sys.query_store_query_text qt
-  ON qt.query_text_id = q.query_text_id
+JOIN #QS_Text t
+  ON t.SourceDb = @DbName
+ AND t.query_text_id = q.query_text_id
 LEFT JOIN {{DB}}.sys.objects obj
   ON obj.object_id = q.object_id
 LEFT JOIN {{DB}}.sys.schemas sch
   ON sch.schema_id = obj.schema_id
-OUTER APPLY
-(
-    SELECT
-        DetectedType =
-            CASE
-                WHEN @StatementType = ''ALL'' THEN NULL
-                ELSE
-                (
-                    SELECT TOP (1) v.Typ
-                    FROM
-                    (
-                        SELECT
-                              Typ = ''SELECT''
-                            , Pos =
-                                  CASE
-                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''SELECT%'' THEN 1
-                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%SELECT%'', UPPER(qt.query_sql_text)),0)
-                                      ELSE NULL
-                                  END
-                        UNION ALL
-                        SELECT
-                              Typ = ''INSERT''
-                            , Pos =
-                                  CASE
-                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''INSERT%'' THEN 1
-                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%INSERT%'', UPPER(qt.query_sql_text)),0)
-                                      ELSE NULL
-                                  END
-                        UNION ALL
-                        SELECT
-                              Typ = ''UPDATE''
-                            , Pos =
-                                  CASE
-                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''UPDATE%'' THEN 1
-                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%UPDATE%'', UPPER(qt.query_sql_text)),0)
-                                      ELSE NULL
-                                  END
-                        UNION ALL
-                        SELECT
-                              Typ = ''DELETE''
-                            , Pos =
-                                  CASE
-                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''DELETE%'' THEN 1
-                                      WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%DELETE%'', UPPER(qt.query_sql_text)),0)
-                                      ELSE NULL
-                                  END
-                    ) v
-                    WHERE v.Pos IS NOT NULL
-                    ORDER BY v.Pos ASC
-                )
-            END
-) st
 WHERE 1=1
   AND (
         (@IncludeSP = 1 AND q.object_id > 0)
@@ -298,22 +353,20 @@ WHERE 1=1
   AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
   AND (
         @StatementType = ''ALL''
-        OR st.DetectedType = @StatementType
+        OR t.DetectedType = @StatementType
       )
 GROUP BY
       q.object_id, sch.name, obj.name
     , q.query_hash
-    , qt.query_sql_text
-    , CASE
-          WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
-          WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
-          ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
-      END;
+    , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+          CASE
+              WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+              WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+              ELSE t.NormalizedText
+          END
+      ));
 ';
 
--------------------------------------------------------------------------------------------------------------------
--- Build and execute per Lower/Higher DB
--------------------------------------------------------------------------------------------------------------------
 DECLARE @sqlL nvarchar(max) =
     REPLACE(
       REPLACE(
@@ -478,8 +531,8 @@ DECLARE @domTmpl nvarchar(max) = N'
         , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
               CASE
                   WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
-                  WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
-                  ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
+                  WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                  ELSE t.NormalizedText
               END
           )) AS GroupKeyHash
         , CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END AS QueryType
@@ -504,56 +557,13 @@ DECLARE @domTmpl nvarchar(max) = N'
       ON rs.plan_id = p.plan_id
     JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
       ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
-    JOIN {{DB}}.sys.query_store_query_text qt
-      ON qt.query_text_id = q.query_text_id
+    JOIN #QS_Text t
+      ON t.SourceDb = @DbName
+     AND t.query_text_id = q.query_text_id
     LEFT JOIN {{DB}}.sys.objects obj
       ON obj.object_id = q.object_id
     LEFT JOIN {{DB}}.sys.schemas sch
       ON sch.schema_id = obj.schema_id
-    OUTER APPLY
-    (
-        SELECT
-            DetectedType =
-                CASE
-                    WHEN @StatementType = ''ALL'' THEN NULL
-                    ELSE
-                    (
-                        SELECT TOP (1) v.Typ
-                        FROM
-                        (
-                            SELECT Typ=''SELECT'',
-                                   Pos=CASE
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''SELECT%'' THEN 1
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%SELECT%'', UPPER(qt.query_sql_text)),0)
-                                            ELSE NULL
-                                       END
-                            UNION ALL
-                            SELECT Typ=''INSERT'',
-                                   Pos=CASE
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''INSERT%'' THEN 1
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%INSERT%'', UPPER(qt.query_sql_text)),0)
-                                            ELSE NULL
-                                       END
-                            UNION ALL
-                            SELECT Typ=''UPDATE'',
-                                   Pos=CASE
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''UPDATE%'' THEN 1
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%UPDATE%'', UPPER(qt.query_sql_text)),0)
-                                            ELSE NULL
-                                       END
-                            UNION ALL
-                            SELECT Typ=''DELETE'',
-                                   Pos=CASE
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''DELETE%'' THEN 1
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%DELETE%'', UPPER(qt.query_sql_text)),0)
-                                            ELSE NULL
-                                       END
-                        ) v
-                        WHERE v.Pos IS NOT NULL
-                        ORDER BY v.Pos ASC
-                    )
-                END
-    ) st
     WHERE 1=1
       AND (
             (@IncludeSP = 1 AND q.object_id > 0)
@@ -563,7 +573,7 @@ DECLARE @domTmpl nvarchar(max) = N'
       AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
       AND (
             @StatementType = ''ALL''
-            OR st.DetectedType = @StatementType
+            OR t.DetectedType = @StatementType
           )
       AND EXISTS
       (
@@ -572,8 +582,8 @@ DECLARE @domTmpl nvarchar(max) = N'
           WHERE fg.GroupKeyHash = HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
                 CASE
                     WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
-                    WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
-                    ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
+                    WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                    ELSE t.NormalizedText
                 END
           ))
             AND fg.QueryType = CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END
@@ -582,12 +592,13 @@ DECLARE @domTmpl nvarchar(max) = N'
     GROUP BY
           q.object_id, sch.name, obj.name
         , q.query_hash
-        , qt.query_sql_text
-        , CASE
-              WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
-              WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
-              ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
-          END
+        , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+              CASE
+                  WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                  WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                  ELSE t.NormalizedText
+              END
+          ))
         , p.plan_id
         , q.query_id
 ),
@@ -776,9 +787,6 @@ WHERE f.ConfidenceFlags LIKE '%MULTI_PLAN%';
 
 IF EXISTS (SELECT 1 FROM #MultiGroups)
 BEGIN
--------------------------------------------------------------------------------------------------------------------
--- Plan-level aggregation for multi-plan groups
--------------------------------------------------------------------------------------------------------------------
     IF OBJECT_ID('tempdb..#PlanAgg') IS NOT NULL DROP TABLE #PlanAgg;
     CREATE TABLE #PlanAgg
     (
@@ -815,8 +823,8 @@ BEGIN
         , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
               CASE
                   WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
-                  WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
-                  ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
+                  WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                  ELSE t.NormalizedText
               END
           )) AS GroupKeyHash
         , p.plan_id AS PlanId
@@ -853,56 +861,13 @@ BEGIN
       ON rs.plan_id = p.plan_id
     JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
       ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
-    JOIN {{DB}}.sys.query_store_query_text qt
-      ON qt.query_text_id = q.query_text_id
+    JOIN #QS_Text t
+      ON t.SourceDb = @DbName
+     AND t.query_text_id = q.query_text_id
     LEFT JOIN {{DB}}.sys.objects obj
       ON obj.object_id = q.object_id
     LEFT JOIN {{DB}}.sys.schemas sch
       ON sch.schema_id = obj.schema_id
-    OUTER APPLY
-    (
-        SELECT
-            DetectedType =
-                CASE
-                    WHEN @StatementType = ''ALL'' THEN NULL
-                    ELSE
-                    (
-                        SELECT TOP (1) v.Typ
-                        FROM
-                        (
-                            SELECT Typ=''SELECT'',
-                                   Pos=CASE
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''SELECT%'' THEN 1
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%SELECT%'', UPPER(qt.query_sql_text)),0)
-                                            ELSE NULL
-                                       END
-                            UNION ALL
-                            SELECT Typ=''INSERT'',
-                                   Pos=CASE
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''INSERT%'' THEN 1
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%INSERT%'', UPPER(qt.query_sql_text)),0)
-                                            ELSE NULL
-                                       END
-                            UNION ALL
-                            SELECT Typ=''UPDATE'',
-                                   Pos=CASE
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''UPDATE%'' THEN 1
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%UPDATE%'', UPPER(qt.query_sql_text)),0)
-                                            ELSE NULL
-                                       END
-                            UNION ALL
-                            SELECT Typ=''DELETE'',
-                                   Pos=CASE
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''DELETE%'' THEN 1
-                                            WHEN UPPER(LTRIM(qt.query_sql_text)) LIKE ''WITH%''   THEN NULLIF(PATINDEX(''%DELETE%'', UPPER(qt.query_sql_text)),0)
-                                            ELSE NULL
-                                       END
-                        ) v
-                        WHERE v.Pos IS NOT NULL
-                        ORDER BY v.Pos ASC
-                    )
-                END
-    ) st
     WHERE 1=1
       AND (
             (@IncludeSP = 1 AND q.object_id > 0)
@@ -912,7 +877,7 @@ BEGIN
       AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
       AND (
             @StatementType = ''ALL''
-            OR st.DetectedType = @StatementType
+            OR t.DetectedType = @StatementType
           )
       AND EXISTS
       (
@@ -921,8 +886,8 @@ BEGIN
           WHERE mg.GroupKeyHash = HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
                 CASE
                     WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
-                    WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
-                    ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
+                    WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                    ELSE t.NormalizedText
                 END
           ))
             AND mg.QueryType = CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END
@@ -931,12 +896,13 @@ BEGIN
     GROUP BY
           q.object_id, sch.name, obj.name
         , q.query_hash
-        , qt.query_sql_text
-        , CASE
-              WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
-              WHEN @GroupBy = ''QueryText'' THEN qt.query_sql_text
-              ELSE LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
-          END
+        , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+              CASE
+                  WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                  WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                  ELSE t.NormalizedText
+              END
+          ))
         , p.plan_id
         , q.query_id
         , p.query_plan;
