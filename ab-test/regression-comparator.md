@@ -14,7 +14,7 @@
 * **[Understanding ConfidenceFlags](#understanding-confidenceflags)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
 * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
-* **[Analytical Deliverables and Decision Readiness](#analytical-deliverables-and-decision-readiness)**
+* **[A/B Analysis Summary](#analytical-deliverables-and-decision-readiness)**
 
 ## Quick Start
 
@@ -688,8 +688,8 @@ This can happen due to plan elimination, parameter sensitivity, or replay timing
 No. Some plan changes are improvements. The metric and ImpactScore determine whether the change is harmful.
 
 
-## Final Outcome
-This document defines a complete, repeatable methodology for validating SQL Server compatibility level changes using measured workload behavior, not assumptions.
+## A/B Analysis Summary
+This document defines a complete, repeatable methodology for validating compatibility level changes using measured workload behavior, not assumptions.
 
 By following the steps outlined, including capturing production workload, replaying it consistently, and analyzing Query Store results with execution-weighted metrics, you gain a reliable foundation for making compatibility level decisions with confidence.
 
@@ -702,6 +702,7 @@ At the end of this process:
 
 This approach transforms compatibility level upgrades from a high-risk operation into a governed engineering activity, supported by evidence and repeatable validation rather than intuition.
 
-No further interpretation is required beyond the results produced.  
-If the analysis passes, the change can proceed.  
-If it does not, the reasons—and the remediation path—are already known.
+> [!IMPORTANT]
+> - No further interpretation is required beyond the results produced.  
+> - If the analysis passes, the change can proceed.  
+> - If it does not, the reasons and the remediation path are already known.
