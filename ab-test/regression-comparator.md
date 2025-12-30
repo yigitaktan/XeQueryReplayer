@@ -14,7 +14,7 @@
 * **[Understanding ConfidenceFlags](#understanding-confidenceflags)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
 * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
-* **[A/B Analysis Summary](#analytical-deliverables-and-decision-readiness)**
+* **[A/B Analysis Summary](#ab-analysis-summary)**
 
 ## Quick Start
 
