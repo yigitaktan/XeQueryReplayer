@@ -1,26 +1,26 @@
 /*
-╔══════════════════════════════════════════════════════════════════════════════════════════════════════════╦══════╗
-║  QUERY STORE CL REGRESSION COMPARATOR                                                                    ║ v1.5 ║
-╠══════════════════════════════════════════════════════════════════════════════════════════════════════════╩══════╣
-║  PURPOSE                                                                                                        ║
-║  ───────                                                                                                        ║
-║  Compares Query Store data between two databases running at different compatibility levels.                     ║
-║  Designed for A/B testing during CL upgrades to identify, quantify, and analyze query performance regressions.  ║
-╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
-║  DOCUMENTATION                                                                                                  ║
-║  ─────────────                                                                                                  ║
-║  https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/regression-comparator.md                       ║
-╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
-║  DISCLAIMER                                                                                                     ║
-║  ──────────                                                                                                     ║
-║  Provided as-is, without warranty. Results depend on workload replay quality and Query Store accuracy.          ║
-║  The author assumes no responsibility for unintended consequences resulting from its use.                       ║
-╠═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╣
-║  AUTHOR                                                                                                         ║
-║  ──────                                                                                                         ║
-║  Yigit Aktan                                                                                                    ║
-║  Microsoft | Global Delivery                                                                                    ║
-╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
++----------------------------------------------------------------------------------------------------------+------+
+|  QUERY STORE CL REGRESSION COMPARATOR                                                                    | v1.5 |
++----------------------------------------------------------------------------------------------------------+------+
+|  PURPOSE                                                                                                        |
+|  -------                                                                                                        |
+|  Compares Query Store data between two databases running at different compatibility levels.                     |
+|  Designed for A/B testing during CL upgrades to identify, quantify, and analyze query performance regressions.  |
++-----------------------------------------------------------------------------------------------------------------+
+|  DOCUMENTATION                                                                                                  |
+|  -------------                                                                                                  |
+|  https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/regression-comparator.md                       |
++-----------------------------------------------------------------------------------------------------------------+
+|  DISCLAIMER                                                                                                     |
+|  ----------                                                                                                     |
+|  Provided as-is, without warranty. Results depend on workload replay quality and Query Store accuracy.          |
+|  The author assumes no responsibility for unintended consequences resulting from its use.                       |
++-----------------------------------------------------------------------------------------------------------------+
+|  AUTHOR                                                                                                         |
+|  ------                                                                                                         |
+|  Yigit Aktan                                                                                                    |
+|  Microsoft | Global Delivery                                                                                    |
++-----------------------------------------------------------------------------------------------------------------+
 */
 
 SET NOCOUNT ON;
