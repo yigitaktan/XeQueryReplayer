@@ -24,8 +24,8 @@
 This quick start is designed to get you from "two Query Store datasets" to a ranked regression list in a few minutes.
 
 > Throughout this document:
-> - **LowerCL** refers to the database running at the lower SQL Server compatibility level (baseline).
-> - **HigherCL** refers to the database running at the higher SQL Server compatibility level (candidate).
+> - **LowerCL** refers to the database running at the lower compatibility level (baseline).
+> - **HigherCL** refers to the database running at the higher compatibility level (candidate).
 
 ### What you need
 
