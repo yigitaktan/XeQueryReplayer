@@ -18,8 +18,8 @@
 
 ## Quick Start
 
-> [!NOTE]
-> You can access and download the full script from here: [Query Store CL Regression Comparator](./regression-comparator.sql)
+> [!TIP]
+> Download the full script here: [Query Store CL Regression Comparator](./regression-comparator.sql)
 
 This quick start is designed to get you from "two Query Store datasets" to a ranked regression list in a few minutes.
 
@@ -28,6 +28,9 @@ This quick start is designed to get you from "two Query Store datasets" to a ran
 > - **HigherCL** refers to the database running at the higher SQL Server compatibility level (candidate).
 
 ### What you need
+
+> [!IMPORTANT]
+> This script assumes both Query Store datasets represent the **same captured workload**, replayed consistently on both sides. If the workload or time window differs, results may reflect **workload drift** rather than compatibility-level impact.
 
 Before running the script, ensure you have:
 
@@ -59,12 +62,16 @@ DECLARE
     , @PersistResults bit              = 1                         -- Persist comparison results (1 = enable, 0 = disable)
     , @ResultsTable sysname            = N'dbo.RegressionResults'; -- Target table used when @PersistResults = 1
 ```
+
 Execute the full script after setting parameters. The script reads these parameters and produces the result sets described below.
 
 
 ## Script Parameters and Execution Model
 
 The script is designed to be fully deterministic and operator-driven. In other words, the output is entirely shaped by the parameter block at the top of the script. Those parameters control which two Query Store snapshots are compared, how queries are correlated, what metric is evaluated, what qualifies as a regression, and whether results are persisted for historical tracking.
+
+> [!IMPORTANT]
+> Determinism here means: **same Query Store inputs + same parameter block = same outputs**. It does not guarantee correctness if the inputs are not comparable (e.g., workload drift, different replay windows, or incomplete Query Store capture).
 
 At a high level, the script runs in four phases:
 
@@ -101,6 +108,9 @@ These two databases are treated as independent evidence sources. The script neve
 > - Use a higher value when your capture window is short and workload is spiky.
 > - Use a lower value when your capture window is long and you want more coverage.
 
+> [!WARNING]
+> Setting `@MinExecCount` too low can amplify **statistical noise** (false positives). Setting it too high can hide real regressions that occur on important but lower-frequency paths (false negatives). Tune it based on replay duration and workload shape.
+
 - `@MinRegressionRatio`  
   Controls the minimum regression ratio that qualifies as a “regression candidate.”  
   The script computes:
@@ -115,6 +125,9 @@ These two databases are treated as independent evidence sources. The script neve
 > - Start with something like `1.25` for initial triage.
 > - Move to `1.10` if you need to catch smaller regressions with high impact.
 > - Move to `1.50+` when you only care about "obviously bad" regressions.
+
+> [!CAUTION]
+> `RegressionRatio` is a **directional signal**, not a prioritization metric. Always pair it with execution volume and `ImpactScore` before concluding that a regression is operationally significant.
 
 - `@TopN`  
   Limits the output to the top N rows after sorting by impact or ranking logic.  
@@ -138,12 +151,19 @@ These two databases are treated as independent evidence sources. The script neve
   **Behavior**:
   - If both are `NULL`, the script analyzes the full available Query Store history in each database.
   - If provided, the script filters Query Store runtime stats intervals to those that overlap the specified window.
+
 > [!IMPORTANT]
 > Some SQL Server versions expose limited interval end-time metadata in Query Store. In those cases, the script may fall back to using the maximum observed `start_time` for interval bounding, and it will flag this via `INTERVAL_END_FALLBACK`. This does not invalidate results, but it can slightly reduce temporal precision when slicing narrow windows.
+> 
+> Narrow windows can be affected more visibly by this limitation, so interpret fine-grained slicing with extra care.
+
 
 > [!TIP]
 > - Use the widest reasonable window that cleanly maps to your replay period.
 > - Avoid overly tight windows unless you are certain about Query Store interval boundaries.
+
+> [!WARNING]
+> Overly tight windows can produce misleading deltas if Query Store intervals do not align cleanly to your replay boundaries. When in doubt, widen the window to fully cover replay and exclude only obvious warm-up/ramp-down.
 
 ### Metric Configuration
 
@@ -157,6 +177,9 @@ These two databases are treated as independent evidence sources. The script neve
     Best for compute-bound workloads where logical reads are stable but CPU time changes due to different plan shapes or operators.
   - `Duration`  
     Best for latency / end-to-end response time comparisons. Most sensitive to concurrency and blocking effects, so interpret carefully.
+
+> [!NOTE]
+> `Duration` is often the most **context-dependent** metric. If concurrency, blocking, or resource governance differs between rounds, duration deltas may reflect environment effects rather than optimizer/plan changes.
 
   **Design principle**:
   The script derives all totals and averages from the selected metric using execution-weighted aggregation (not simple averages), ensuring that high-frequency executions dominate the math appropriately.
@@ -178,6 +201,9 @@ These two databases are treated as independent evidence sources. The script neve
   - Too strict (`QueryText`) can fragment results (same logical query becomes multiple groups).
   - Too loose can mix unrelated queries if normalization collapses differences.
 
+> [!CAUTION]
+> Grouping choice can materially change the story. If results look inconsistent or too noisy, re-run with an alternative `@GroupBy` setting to validate whether you are seeing true regressions or grouping artifacts.
+
 ### Statement-Type Filtering
 
 - `@StatementType`  
@@ -196,6 +222,8 @@ These two databases are treated as independent evidence sources. The script neve
 
 > [!NOTE]
 > Classification is typically derived from Query Store query text inspection logic. For mixed batches or complex statements, categorization may not be perfect; treat this as a pragmatic filter, not a formal parser.
+>
+> For high-stakes investigations, validate statement type using the original query text or application context.
 
 ### Workload-Type Inclusion (Ad-hoc vs Stored Procedures)
 
@@ -250,6 +278,9 @@ These two databases are treated as independent evidence sources. The script neve
   - Build a history of "known offenders" per database / CL pair
   - Integrate results into a broader pipeline (reporting, dashboards, automation)
 
+> [!CAUTION]
+> Persist results only in a controlled location (utility/ops database). Avoid writing comparator artifacts into production application databases unless you have a clear retention and governance plan.
+
 - `@ResultsTable`  
   The fully qualified target table name used when `@PersistResults = 1`.  
   Example: `dbo.QueryStoreCLRegressionResults`
@@ -262,6 +293,9 @@ These two databases are treated as independent evidence sources. The script neve
 ## How Queries Are Grouped
 
 One of the core challenges in compatibility level A/B testing is reliably correlating the same logical query across two different environments. Query IDs and Plan IDs are not stable across restores, replays, or compatibility levels, so direct ID comparison is not sufficient.
+
+> [!IMPORTANT]
+> Do not compare `query_id` or `plan_id` directly across databases. Always rely on the configured grouping strategy (`@GroupBy`) to correlate logical queries across compatibility levels.
 
 To solve this, the script uses a configurable **logical grouping strategy**, controlled by the `@GroupBy` parameter.
 
@@ -295,7 +329,12 @@ All comparisons, ratios, and impact calculations are derived consistently from t
 
 ## Metric Aggregation and Weighting Model
 
-Query Store exposes runtime statistics as averages per plan and interval. To produce accurate, workload-representative comparisons, the script does not rely on simple averages.
+Query Store exposes runtime statistics as averages per plan and interval.
+
+> [!NOTE]
+> Query Store metrics are stored as **averages per plan and per interval**. The script reconstructs workload-representative totals by weighting averages with execution counts.
+
+To produce accurate, workload-representative comparisons, the script does not rely on simple averages.
 
 Instead, all metrics are aggregated using **execution-count–weighted math**:
 
@@ -370,6 +409,9 @@ It lists only queries where:
 
 - The metric is worse in HigherCL than LowerCL
 - The regression passes optional execution count and ratio thresholds
+
+> [!WARNING]
+> Rows flagged with `MISSING_ONE_SIDE` often indicate **workload drift, filtering, or window mismatch**, not a true regression. Treat them as a validation cue before mitigation work.
 
 Key Columns and How to Read Them:
 
@@ -462,7 +504,8 @@ The ConfidenceFlags column helps interpret reliability:
 > - When WEIGHTED_TOTAL appears without INTERVAL_END_FALLBACK, the time window and aggregation are both reliable.
 > - When combined with LOW_EXEC or MULTI_PLAN, interpretation should consider plan variability or sample size.
 
-Flags do not automatically invalidate results, but they require engineering judgment.
+> [!IMPORTANT]
+> Confidence flags are not a verdict. They do not automatically invalidate results, but they **must** be considered before drawing conclusions or applying mitigations.
 
 
 ## Recommended Analysis Workflow
@@ -507,7 +550,7 @@ Why:
 - Query Store aggregates are only meaningful when sample size is sufficient
 - Confidence flags exist to prevent premature conclusions
 
-> RULE OF THUMB:  
+> [!TIP]
 > Do not invest deep analysis effort until execution volume and confidence flags look reasonable.
 
 ---
@@ -627,6 +670,7 @@ Decision factors:
 
 > [!IMPORTANT]  
 > Plan forcing should be a last resort, not the default response.
+> Prefer root-cause fixes (stats/index/query shape) whenever feasible before forcing.
 
 ---
 
@@ -703,6 +747,6 @@ At the end of this process:
 This approach transforms compatibility level upgrades from a high-risk operation into a governed engineering activity, supported by evidence and repeatable validation rather than intuition.
 
 > [!IMPORTANT]
-> - No further interpretation is required beyond the results produced.  
-> - If the analysis passes, the change can proceed.  
-> - If it does not, the reasons and the remediation path are already known.
+> - The result sets provide a structured, evidence-based view of regressions, but **engineering judgment is still required** (especially when ConfidenceFlags indicate drift or low sample size).
+> - If the analysis shows acceptable risk, the change can proceed with confidence.
+> - If it does not, the outputs help narrow down the likely causes and guide a targeted remediation path.
