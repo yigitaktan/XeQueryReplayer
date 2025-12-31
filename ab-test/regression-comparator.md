@@ -179,7 +179,9 @@ These two databases are treated as independent evidence sources. The script neve
     Best for latency / end-to-end response time comparisons. Most sensitive to concurrency and blocking effects, so interpret carefully.
 
 > [!NOTE]
-> `Duration` is often the most **context-dependent** metric. If concurrency, blocking, or resource governance differs between rounds, duration deltas may reflect environment effects rather than optimizer/plan changes.
+> - When `@Metric = 'Duration'`, regressions may be driven by blocking, waits, or replay-concurrency differences.
+> - Result Sets #3 and #4 focus on plan-level behavior and plan shape; they may not fully explain Duration regressions that are concurrency-driven.
+> - `Duration` is often the most **context-dependent** metric. If concurrency, blocking, or resource governance differs between rounds, duration deltas may reflect environment effects rather than optimizer/plan changes.
 
   **Design principle**:
   The script derives all totals and averages from the selected metric using execution-weighted aggregation (not simple averages), ensuring that high-frequency executions dominate the math appropriately.
@@ -284,6 +286,9 @@ These two databases are treated as independent evidence sources. The script neve
 - `@ResultsTable`  
   The fully qualified target table name used when `@PersistResults = 1`.  
   Example: `dbo.QueryStoreCLRegressionResults`
+
+> [!CAUTION]
+> When `@PersistResults = 1`, the script **drops and recreates** the target table on each run (DROP + CREATE). This means results are **not historically retained** unless you modify the persistence model (e.g., append with a RunId / timestamp key, or persist into a dedicated table per run).
 
 > [!TIP]
 > - Keep this table in a dedicated utility database if multiple teams use it.
@@ -747,6 +752,7 @@ At the end of this process:
 This approach transforms compatibility level upgrades from a high-risk operation into a governed engineering activity, supported by evidence and repeatable validation rather than intuition.
 
 > [!IMPORTANT]
-> - The result sets provide a structured, evidence-based view of regressions, but **engineering judgment is still required** (especially when ConfidenceFlags indicate drift or low sample size).
-> - If the analysis shows acceptable risk, the change can proceed with confidence.
-> - If it does not, the outputs help narrow down the likely causes and guide a targeted remediation path.
+> The script produces a ranked regression view, but **engineering interpretation is still required**.
+> - Always review `ConfidenceFlags` (e.g., `MISSING_ONE_SIDE`, `LOW_EXEC`, `MULTI_PLAN`, `INTERVAL_END_FALLBACK`) before taking action.
+> - A "pass" decision should be based on: workload comparability, sufficient execution volume on both sides, and whether top-impact regressions are understood and mitigated.
+> - The outputs accelerate root-cause analysis, but they do not automatically prove causality without workload and replay validation.
