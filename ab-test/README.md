@@ -98,16 +98,23 @@ The start-capture.sql script supports several parameters, but the two most impor
 
 All parameters are documented in detail in the script itself via comments.
 
-When you run the script, it creates an Extended Events session, captures the workload using the selected options, and once the capture is completed, it drops the session automatically. Because of that, the user running the script must have permission to create and drop Extended Events sessions.
+When you run the script, it creates an Extended Events session, captures the workload using the selected options, and once the capture is completed, it drops the session automatically.
+
+> [!CAUTION]
+> The script creates and drops an Extended Events session. The account running it must have sufficient permissions to **create/drop XE sessions**; otherwise, capture will fail.
 
 
 
 ## Step 2 / Round 1 - Syncing Up
+
+> [!IMPORTANT]
+> The replay database must represent the **same point in time** as the capture start (same timestamp/LSN as closely as possible). If the data state does not align, replay can fail (schema/data dependencies) or produce misleading results.
+
 The timestamp of the data on the replay server must match the timestamp of the workload you captured.
 
 In other words, the database state on the replay server must reflect the same point in time as the moment when the capture started.
 
-For example, let’s say you started capturing workload on the production system at 10:10 and stopped it at 10:20, resulting in a 10-minute capture. To replay this workload correctly, you must restore a backup taken at 10:10 (or as close as possible) onto the replay server. The replay database must represent the 10:10 state of the data.
+For example, let's say you started capturing workload on the production system at 10:10 and stopped it at 10:20, resulting in a 10-minute capture. To replay this workload correctly, you must restore a backup taken at 10:10 (or as close as possible) onto the replay server. The replay database must represent the 10:10 state of the data.
 
 The reason for this is straightforward: if a query executed at 10:09 performed a DROP, INSERT, or UPDATE, and a query captured at 10:10 depending on that change, the replayed query will fail unless the replay database already contains that exact data state. Aligning the database to the same point in time ensures that all replayed queries can run successfully without schema or data-related errors ([Restore a SQL Server Database to a Point in Time](https://learn.microsoft.com/en-us/sql/relational-databases/backup-restore/restore-a-sql-server-database-to-a-point-in-time-full-recovery-model?view=sql-server-ver17)).
 
@@ -139,7 +146,8 @@ For this setup, I typically use the following Query Store configuration:
 - Statistics Collection Interval: **1 minute**
 - Query Capture Mode: **ALL**
 
-I use ALL because I don’t want Query Store to make decisions for me. I want to capture every query that shows up during replay.
+> [!TIP]
+> Use **Query Capture Mode = ALL** for A/B testing. You want Query Store to capture everything observed during replay rather than applying heuristics that may hide low-frequency but high-impact queries.
 
 Query Store capture mode supports four values, with the following meanings:
 
@@ -148,7 +156,10 @@ Query Store capture mode supports four values, with the following meanings:
 - **NONE**: Stops capturing new queries
 - **CUSTOM (SQL Server 2019+)**: Captures queries based on custom capture policy options
 
-For Max Storage Size, I usually set 10 GB for this type of testing, and it’s often sufficient. However, the right value depends heavily on your workload, especially how many concurrent transactions per second you’re generating during replay. So, in real projects, you should size this per database based on your expected capture volume.
+> [!WARNING]
+> Query Store can drop or evict data if it reaches its storage limits. Size **Max Storage Size** based on your expected replay volume and concurrency, and monitor usage during the run to avoid losing evidence needed for comparison.
+
+For Max Storage Size, I usually set 10 GB for this type of testing, and it's often sufficient. However, the right value depends heavily on your workload, especially how many concurrent transactions per second you're generating during replay. So, in real projects, you should size this per database based on your expected capture volume.
 
 
 
@@ -162,9 +173,14 @@ At the beginning of the document, I shared the documentation links that walk thr
 
 
 ## Step 6 / Round 1 - Verify Collected Data
-After the replay finishes, you should validate that the replayed queries made it into Query Store. The easiest way to do that is to run [step-6.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-6.sql), which checks whether Query Store has stored the expected query metadata. If Query Store is empty, missing data, or looks incomplete, don’t move on to the next steps yet, stop and troubleshoot first. At this stage, you need to understand why the data isn’t there.
+After the replay finishes, you should validate that the replayed queries made it into Query Store. The easiest way to do that is to run [step-6.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-6.sql), which checks whether Query Store has stored the expected query metadata. 
 
-In practice, the most common cause is that the replay workload includes INSERT / UPDATE / DELETE activity, which changes data over time. If your replay database state doesn’t truly match the capture start point, queries can fail or behave differently, and Query Store won’t reflect the workload correctly. In those cases, repeating the point-in-time restore and replaying again is usually the cleanest and healthiest way to get reliable results.
+> [!WARNING]
+> If Query Store is empty, missing data, or looks incomplete, **do not proceed**. Stop here and troubleshoot first; otherwise the rest of the workflow will produce unreliable comparisons.
+
+At this stage, you need to understand why the data isn't there.
+
+In practice, the most common cause is that the replay workload includes INSERT / UPDATE / DELETE activity, which changes data over time. If your replay database state doesn't truly match the capture start point, queries can fail or behave differently, and Query Store won't reflect the workload correctly. In those cases, repeating the point-in-time restore and replaying again is usually the cleanest and healthiest way to get reliable results.
 
 <img width="716" height="49" alt="step6" src="https://github.com/user-attachments/assets/91b0658f-77f4-4cd3-b8bc-92f4af203480" />
 
@@ -175,12 +191,15 @@ In the previous step, we confirmed that the replayed workload was successfully c
 
 Keeping the full database around at this stage only wastes disk space on the replay server, and more importantly, it can prevent us from having enough space for the next restore in the second round. For that reason, we want to retain only the Query Store metadata and get rid of the user data, effectively shrinking the database footprint.
 
+> [!CAUTION]
+> `DBCC CLONEDATABASE` is used to create a lightweight copy that preserves Query Store metadata while removing user table data. Validate the outcome (next step) before deleting the original restored database.
+
 To achieve this, we use the [DBCC CLONEDATABASE](https://learn.microsoft.com/en-us/sql/t-sql/database-console-commands/dbcc-clonedatabase-transact-sql?view=sql-server-ver17) command. When you run CLONEDATABASE with its default options, it does exactly what we need: it creates a clone of the database without user table data, while preserving Query Store metadata.
 
 The result is a much smaller database, containing only the information required for analysis, and freeing up disk space on the replay server for the next round of testing.
 
-To create the database clone as described, use [step-7.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-7.sql) script. In the script, you’ll see that DemoDB is cloned as DemoDB_cl120.
-The reason I add the _cl120 suffix is to clearly indicate which compatibility level the Query Store data belongs to. This makes things much easier during analysis, especially when you’re comparing multiple rounds side by side. Since in the first round we ran the replay with compatibility level 120, the clone is named DemoDB_cl120 accordingly.
+To create the database clone as described, use [step-7.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-7.sql) script. In the script, you'll see that DemoDB is cloned as DemoDB_cl120.
+The reason I add the _cl120 suffix is to clearly indicate which compatibility level the Query Store data belongs to. This makes things much easier during analysis, especially when you're comparing multiple rounds side by side. Since in the first round we ran the replay with compatibility level 120, the clone is named DemoDB_cl120 accordingly.
 
 
 ## Step 8 / Round 1 - Verify the Clone
@@ -192,6 +211,10 @@ To validate this, we run the [step-8.sql](https://github.com/yigitaktan/XeQueryR
 
 
 ## Step 9 / Round 1 - Removing the Restored Database
+
+> [!CAUTION]
+> Only drop the restored database after you have verified that the clone (e.g., `DemoDB_cl120`) contains the required Query Store data and is safe to keep for analysis.
+
 Now that DemoDB_cl120 contains all the Query Store metadata we need, we can safely remove the original DemoDB from the replay server. Keeping it around only wastes disk space.
 
 Using the [step-9.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-9.sql) script, we drop DemoDB and free up space on the server for the next restore and replay round.
@@ -217,6 +240,9 @@ To do this, simply run the [step-12.sql](https://github.com/yigitaktan/XeQueryRe
 
 ## Step 13 / Round 2 - Replaying Data
 Now it's time to replay the same captured workload again, but this time under compatibility level 170.
+
+> [!IMPORTANT]
+> Treat the following as a hard gate. If any item is not true, fix it before replaying, otherwise Round 2 results will not be comparable with Round 1.
 
 Before you start the replay, do one last sanity check:
 
@@ -250,12 +276,20 @@ To validate this, we run the [step-16.sql](https://github.com/yigitaktan/XeQuery
 
 
 ## Step 17 / Round 2 - Removing the Restored Database
+
+> [!CAUTION]
+> Before dropping the original restored database, confirm the Round 2 clone contains the expected Query Store data. Once dropped, recovery requires restoring again.
+
 Once you have confirmed that the Query Store data is present in the clone, you can safely drop the original DemoDB that still contains user data.
 
 To do this, simply run the [step-17.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/ab-test/step-17.sql) script.
 
 
 ## Step 18 / Analysis Time
+
+> [!NOTE]
+> From this point forward, the workflow is **analysis-only**. You should not need user table data anymore. Your evidence comes exclusively from Query Store metadata captured during the two replay rounds.
+
 The purpose of this step is to identify, quantify, and explain query performance regressions that occur after a compatibility level change, using Query Store data collected during replay.
 
 At this point in the A/B testing workflow:
