@@ -42,24 +42,29 @@ The diagram below illustrates the entire end-to-end workflow, starting from capt
 <img width="1196" height="588" alt="2025-12-29_08-43-46" src="https://github.com/user-attachments/assets/fc2d3d88-1cdb-43d8-b1b8-1a2ccb7d6c37" />
 
 > [!IMPORTANT]
-> The scenario described below uses a database named DemoDB as an example, demonstrating a compatibility level upgrade from SQL Server 2014 (120) to SQL Server 2025 (170).
-> 
-> In this setup, our production database, DemoDB, is currently running on SQL Server 2019 with a 120 compatibility level. As part of the migration scenario, this database will be moved to a newly deployed SQL Server 2025 instance, where its compatibility level will then be raised to 170.
-
+> The scenario below uses a database named **DemoDB** as an example, showing a compatibility level upgrade from **SQL Server 2014 (120)** to **SQL Server 2025 (170)**.
+>
+> In this setup, the production database (DemoDB) is running on **SQL Server 2019** at **CL 120**. As part of the migration, the database is restored to a new **SQL Server 2025** instance and then upgraded to **CL 170**.
 
 > [!NOTE]
-> DemoDB is used as an example. Replace database names, versions, and compatibility levels.
+> **DemoDB** is only an example. Replace the database name, SQL Server versions, and compatibility levels to match your environment.
+
 
 
 ## Getting Started
 First, we need a test server with SQL Server 2025 installed. This will be our replay server. If you don't already have one, make sure you set up a dedicated test environment running SQL Server 2025.
-Since you will be restoring the DemoDB backup into this test environment, don't forget to allocate enough disk space to accommodate the full database restore. Having sufficient storage upfront is important to avoid interruptions later in the replay and testing process.
+
+> [!WARNING]
+> You will restore the DemoDB backup into the replay environment. Make sure you allocate **enough disk space** for the full restore (and for additional clones later), otherwise the process can fail mid-way and force you to restart the round.
+
 Next, you need to install and properly configure XEvent Query Replayer for the replay server.
-It’s important to note that XEvent Query Replayer does not have to be physically installed on the replay server itself. As long as the machine where the tool runs can access the XEL files and connect to the SQL Server 2025 replay instance, you can execute the replay from another client or server.
 
-That said, if your goal is to complete the replay as quickly as possible, the best approach is to place both XEvent Query Replayer and the XEL files directly on the replay server. This avoids unnecessary network traffic and eliminates latency caused by reading XEL files over the network. My strong recommendation is to keep everything local to ensure the replay finishes in the shortest possible time.
+> [!TIP]
+> XEvent Query Replayer does **not** have to run on the replay server. As long as the machine can access the XEL files and connect to the SQL Server 2025 instance, you can run the replay remotely.
+>
+> For the fastest end-to-end runtime, place **both the tool and the XEL files on the replay server** to avoid network I/O and latency.
 
-All required details for installing and configuring XEvent Query Replayer are covered in the documentation linked below:
+With the prerequisites completed, install and configure XEvent Query Replayer using the links below:
 
 - [Getting started with the script](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#getting-started-with-the-script)
 - [Script components](https://github.com/yigitaktan/XeQueryReplayer/blob/main/README.md#script-components)
@@ -80,7 +85,8 @@ Once XEvent Query Replayer is fully set up and ready, we can move on and start w
 ## Step 1 / Capturing Data
 As the first step, we capture the production workload using the [start-capture.sql](https://github.com/yigitaktan/XeQueryReplayer/blob/main/start-capture.sql) script. The key decision here is how long you want to capture. If your workload is very busy and the server is handling a lot of concurrent activity, a 5-minute capture is often enough to get a representative sample.
 
-One important thing to keep in mind: if you capture 5 minutes of workload, you should not expect to replay it in exactly 5 minutes with XEvent Query Replayer. The more queries you capture (especially under high concurrency), the longer the replay will take.
+> [!NOTE]
+> A 5-minute capture does **not** imply a 5-minute replay. Higher concurrency and a larger captured workload typically increase replay duration, even when the capture window is short.
 
 The start-capture.sql script supports several parameters, but the two most important ones are:
 
