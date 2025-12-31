@@ -47,6 +47,9 @@ The diagram below illustrates the entire end-to-end workflow, starting from capt
 > In this setup, our production database, DemoDB, is currently running on SQL Server 2019 with a 120 compatibility level. As part of the migration scenario, this database will be moved to a newly deployed SQL Server 2025 instance, where its compatibility level will then be raised to 170.
 
 
+> [!NOTE]
+> DemoDB is used as an example. Replace database names, versions, and compatibility levels.
+
 
 ## Getting Started
 First, we need a test server with SQL Server 2025 installed. This will be our replay server. If you don't already have one, make sure you set up a dedicated test environment running SQL Server 2025.
