@@ -13,6 +13,12 @@
 * **[Result Set #4 - Dominant Plan Shape Comparison](#result-set-4---dominant-plan-shape-comparison)**
 * **[Understanding ConfidenceFlags](#understanding-confidenceflags)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
+* **[Mitigation Playbook](#mitigation-playbook)**
+  * **[Query-Level Hints](#query-level-hints)**
+  * **[OPTIMIZE FOR Patterns](#optimize-for-patterns)**
+  * **[USE HINT Patterns](#use-hint-patterns)**
+  * **[Compatibility-Level Scoped Optimizer Hint](#compatibility-level-scoped-optimizer-hint)**
+  * **[Validation Checklist After Applying Hints](#validation-checklist-after-applying-hints)**
 * **[Typical Troubleshooting Questions](#typical-troubleshooting-questions)**
 * **[A/B Analysis Summary](#ab-analysis-summary)**
 
@@ -508,9 +514,8 @@ The ConfidenceFlags column helps interpret reliability:
 > - WEIGHTED_TOTAL is not a warning. It is an informational confidence indicator stating that the metric math is based on statistically correct, weighted aggregation.
 > - When WEIGHTED_TOTAL appears without INTERVAL_END_FALLBACK, the time window and aggregation are both reliable.
 > - When combined with LOW_EXEC or MULTI_PLAN, interpretation should consider plan variability or sample size.
+> - Confidence flags are not a verdict. They do not automatically invalidate results, but they **must** be considered before drawing conclusions or applying mitigations.
 
-> [!IMPORTANT]
-> Confidence flags are not a verdict. They do not automatically invalidate results, but they **must** be considered before drawing conclusions or applying mitigations.
 
 
 ## Recommended Analysis Workflow
@@ -660,12 +665,25 @@ Why:
 
 Only after completing the previous steps should mitigation be considered.
 
-Possible actions:
-- Plan forcing (temporary or scoped)
-- Query-level hints (e.g., `OPTIMIZE FOR`, `USE HINT`)
-- Index or statistics adjustments
-- Query rewrite
-- Compatibility-level scoped optimizer hints
+Possible actions (choose the lowest-blast-radius option that addresses the proven root cause):
+
+- **Query-level hints (targeted)**  
+  Use when regression is driven by optimizer choices or parameter sensitivity and you need a scoped mitigation.  
+  See: [Mitigation Playbook → Query-Level Hints](#query-level-hints)
+
+- **Index or statistics adjustments**  
+  Use when plan regression is explained by access path changes, cardinality misestimation, or stale/insufficient stats.
+
+- **Query rewrite**  
+  Use when the current query shape is inherently sensitive to CE changes, join ordering, or implicit conversions.
+
+- **Plan forcing (Query Store)**  
+  Use as a containment measure when you have a known-good plan and need immediate stability while you work on a durable fix.
+
+- **Compatibility-level scoped optimizer hint**  
+  Use when you must emulate older optimizer behavior for a specific query without changing database-level compatibility.  
+  See: [Mitigation Playbook → Compatibility-Level Scoped Optimizer Hint](#compatibility-level-scoped-optimizer-hint)
+
 
 Decision factors:
 - Regression severity
@@ -713,6 +731,181 @@ Why:
 ---
 
 Following this workflow ensures that compatibility level upgrades are evaluated systematically, defensively, and with engineering discipline, minimizing both performance risk and unnecessary remediation work.
+
+
+## Mitigation Playbook
+
+This section is an implementation-oriented catalog of mitigation options.  
+It is intentionally separated from the workflow so that:
+
+- The workflow stays skimmable and decision-focused
+- Detailed mitigation patterns and examples live in one place
+- You can standardize "what to try first" across teams and replay iterations
+
+> [!IMPORTANT]
+> Apply mitigations only after:
+> - The regression is **high-impact** (ImpactScore-driven)
+> - Confidence is acceptable (review `ConfidenceFlags`)
+> - Root cause is understood (plan dominance + plan shape / behavior)
+
+### Query-Level Hints
+
+Query-level hints are appropriate when you need a **scoped**, **low-blast-radius** mitigation that influences plan choice without changing database-level compatibility.
+
+Use hints when you can clearly attribute the regression to:
+- Parameter sensitivity (plan changes based on parameter values)
+- Optimizer choice changes across compatibility levels (join strategy, access path)
+- Cardinality estimation behavior shifts (CE-driven plan shape divergence)
+
+Avoid hints when:
+- The regression is caused by workload drift, different replay concurrency, blocking, or environment differences
+- You have not validated execution volume and confidence signals
+
+---
+
+### OPTIMIZE FOR Patterns
+
+`OPTIMIZE FOR` addresses classic parameter sensitivity by steering compilation toward a chosen parameter assumption.
+
+#### Pattern A - Optimize for a representative value
+
+Use when there is a "typical" or "safe" parameter value that yields a stable, acceptable plan.
+
+```sql
+    SELECT ...
+    FROM ...
+    WHERE SomeKey = @SomeKey
+    OPTION (OPTIMIZE FOR (@SomeKey = 12345));
+```
+
+When to use:
+- Skewed data distribution (hot vs cold values)
+- You can identify a representative or median value
+- You need a plan that is "good enough" across most executions
+
+Trade-offs:
+- Improves stability but may reduce optimality for extreme values
+- Requires choosing a value that reflects real workload
+
+#### Pattern B - Optimize for UNKNOWN
+
+Use when you want a more "average" assumption rather than sniffing a specific runtime value.
+
+```sql
+    SELECT ...
+    FROM ...
+    WHERE SomeKey = @SomeKey
+    OPTION (OPTIMIZE FOR UNKNOWN);
+```
+
+When to use:
+- You cannot pick a single representative value
+- Sniffed plans are unstable or frequently flip between shapes
+
+Trade-offs:
+- Can produce a generic plan that is suboptimal for hot values
+- Often reduces plan volatility but not always best for peak performance
+
+> [!TIP]
+> If you see `MULTI_PLAN` and the dominant plan flips between sides, `OPTIMIZE FOR` (or `RECOMPILE`) patterns may be appropriate, but validate via Result Set #3 before applying.
+
+---
+
+### USE HINT Patterns
+
+`USE HINT` is typically used to influence optimizer behavior in a targeted way.  
+It is often preferable to broad changes because it is query-scoped and reversible.
+
+> [!NOTE]
+> Hint availability can be version-dependent. Use these patterns as a playbook and validate against your SQL Server version and policy.
+
+#### Pattern A - Reduce parameter sniffing sensitivity (example)
+
+Use when plan quality depends heavily on parameter values and you want to reduce sniffing effects.
+
+```sql
+    SELECT ...
+    FROM ...
+    WHERE SomeKey = @SomeKey
+    OPTION (USE HINT('DISABLE_PARAMETER_SNIFFING'));
+```
+
+When to use:
+- Repeated plan churn tied to parameter values
+- You want a more stable "average" compilation behavior
+
+Trade-offs:
+- May sacrifice per-value optimality
+- Generic plans can increase reads for hot values
+
+#### Pattern B - Address filter selectivity estimation (example)
+
+Use when regressions are driven by changed selectivity estimates on filters.
+
+```sql
+    SELECT ...
+    FROM ...
+    WHERE SomeFilterCol = @Filter
+    OPTION (USE HINT('ASSUME_MIN_SELECTIVITY_FOR_FILTER_ESTIMATES'));
+```
+
+When to use:
+- CE-driven plan flips around predicate selectivity
+- You see plan shape changes involving scans vs seeks or join reordering
+
+Trade-offs:
+- Can over/under-correct depending on distribution
+- Validate via Result Set #4 (plan shape + operator patterns)
+
+---
+
+### Compatibility-Level Scoped Optimizer Hint
+
+This is the primary pattern for "make this query behave more like the old CL" **without changing database compatibility**.
+
+#### Pattern - Query-scoped optimizer compatibility level
+
+```sql
+    SELECT ...
+    FROM ...
+    WHERE ...
+    OPTION (USE HINT('QUERY_OPTIMIZER_COMPATIBILITY_LEVEL_120'));
+```
+
+When to use:
+- The database is running at HigherCL (e.g., 170), but a specific query regresses badly
+- You have confirmed plan shape divergence across CLs (Result Set #4)
+- You want a targeted, low-impact mitigation that approximates LowerCL optimizer behavior
+
+How to validate:
+- Re-run the replay (or a targeted test) with the hint applied
+- Re-run this comparator and confirm:
+  - Regression is reduced in Result Set #1 (ImpactScore drops materially)
+  - Plan dominance stabilizes in Result Set #3
+  - Dominant plan shape aligns with expected behavior in Result Set #4
+
+Trade-offs:
+- This can be an effective containment strategy, but it should not replace durable fixes (stats/index/query shape) when feasible
+- Maintainability: you must track and document where this is used
+
+> [!IMPORTANT]
+> Treat CL-scoped query hints as "surgical exceptions".  
+> If you end up applying them broadly, revisit whether the upgrade window, replay method, or schema/stats posture needs improvement.
+
+---
+
+### Validation Checklist After Applying Hints
+
+Use this checklist for any hint-based mitigation:
+
+- [ ] Re-run the comparator with the same time window parameters (`@StartTime`, `@EndTime`)
+- [ ] Confirm `ImpactScore` is materially improved (not only `RegressionRatio`)
+- [ ] Check `ConfidenceFlags` for LOW_EXEC / MISSING_ONE_SIDE / MULTI_PLAN changes
+- [ ] Validate plan dominance in Result Set #3 (is the desired plan dominant?)
+- [ ] Validate plan shape differences in Result Set #4 (access path, joins, spills, memory grants)
+- [ ] Re-check for regressions introduced elsewhere (blast radius)
+- [ ] Document the rationale + rollback plan (remove hint if future fixes resolve root cause)
+
 
 
 
