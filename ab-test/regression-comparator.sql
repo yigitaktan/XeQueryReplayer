@@ -1,6 +1,6 @@
 /*
 +--------------------------------------------------------------------------------------------------------+--------+
-|  QUERY STORE CL REGRESSION COMPARATOR                                                                  | v1.6.2 |
+|  QUERY STORE CL REGRESSION COMPARATOR                                                                  | v1.6.4 |
 +--------------------------------------------------------------------------------------------------------+--------+
 |  PURPOSE                                                                                                        |
 |  -------                                                                                                        |
@@ -31,8 +31,8 @@ SET NOCOUNT ON;
 DECLARE
       @DbA sysname                     = N'DemoDB_CL120'           -- Baseline database (LowerCL)
     , @DbB sysname                     = N'DemoDB_CL170'           -- Candidate database (HigherCL)
-    , @MinExecCount bigint             = NULL                      -- e.g. 50
-    , @MinRegressionRatio decimal(9,4) = 1.10                      -- e.g. 1.25
+    , @MinExecCount bigint             = 100                       -- e.g. 50, 100, NULL
+    , @MinRegressionRatio decimal(9,4) = 1.25                      -- e.g. 1.25, 1.10, NULL
     , @TopN int                        = 100                       -- e.g. 100
     , @StartTime datetime2(0)          = NULL                      -- e.g. '2025-12-25 21:48:56'
     , @EndTime   datetime2(0)          = NULL                      -- e.g. '2025-12-25 22:00:00'
@@ -44,6 +44,13 @@ DECLARE
     , @OnlyMultiPlan bit               = 0                         -- 1 | 0
     , @PersistResults bit              = 0                         -- 1 | 0
     , @ResultsTable sysname            = N'dbo.RegressionResults';
+
+-------------------------------------------------------------------------------------------------------------------
+-- Eliminate conflicts between tempdb collation and user DB / current DB collations.
+-------------------------------------------------------------------------------------------------------------------
+DECLARE
+      @TempdbCollation sysname = CAST(DATABASEPROPERTYEX('tempdb', 'Collation') AS sysname)
+    , @CollateClause  nvarchar(200) = N' COLLATE ' + CAST(DATABASEPROPERTYEX('tempdb', 'Collation') AS sysname);
 
 -------------------------------------------------------------------------------------------------------------------
 -- Validation
@@ -70,14 +77,6 @@ IF @StatementType NOT IN ('ALL','SELECT','INSERT','UPDATE','DELETE')
 
 IF @OnlyMultiPlan NOT IN (0,1)
     THROW 50007, 'Invalid @OnlyMultiPlan. Use 0 (everything) or 1 (only MULTI_PLAN).', 1;
-
--------------------------------------------------------------------------------------------------------------------
--- Fast-path flags
--------------------------------------------------------------------------------------------------------------------
-DECLARE
-      @NoTimeFilter bit = CASE WHEN @StartTime IS NULL AND @EndTime IS NULL THEN 1 ELSE 0 END
-    , @NeedTextProcessing bit = CASE WHEN @GroupBy <> N'QueryHash' OR @StatementType <> 'ALL' THEN 1 ELSE 0 END
-    , @GroupByIsQueryHash bit = CASE WHEN @GroupBy = N'QueryHash' THEN 1 ELSE 0 END;
 
 -------------------------------------------------------------------------------------------------------------------
 -- Resolve compatibility levels for A/B, then map to Lower/Higher
@@ -135,172 +134,83 @@ CREATE TABLE #QS_Text
     PRIMARY KEY (SourceDb, query_text_id)
 );
 
-CREATE INDEX IX_QS_Text_Source_Detected
-ON #QS_Text (SourceDb, DetectedType)
-INCLUDE (query_text_id);
-
--------------------------------------------------------------------------------------------------------------------
--- Build #QS_Text
--------------------------------------------------------------------------------------------------------------------
 DECLARE @textTmpl nvarchar(max) = N'
-IF (@NoTimeFilter = 1)
-BEGIN
-    ;WITH ids AS
-    (
-        SELECT DISTINCT q.query_text_id
-        FROM {{DB}}.sys.query_store_query q
-        WHERE 1=1
-          AND (
-                (@IncludeSP = 1 AND q.object_id > 0)
-             OR (@IncludeAdhoc = 1 AND (q.object_id = 0 OR q.object_id IS NULL))
-          )
-    )
-    INSERT #QS_Text (SourceDb, query_text_id, query_sql_text, NormalizedText, DetectedType)
-    SELECT
-          @DbName AS SourceDb
-        , qt.query_text_id
-        , qt.query_sql_text
-        , CASE WHEN @NeedTextProcessing = 1
-               THEN LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
-               ELSE NULL
-          END AS NormalizedText
-        , CASE
-              WHEN @NeedTextProcessing = 0 THEN NULL
-              WHEN @StatementType = ''ALL'' THEN NULL
-              ELSE
+;WITH ids AS
+(
+    SELECT DISTINCT q.query_text_id
+    FROM {{DB}}.sys.query_store_query q
+    JOIN {{DB}}.sys.query_store_plan p
+      ON p.query_id = q.query_id
+    JOIN {{DB}}.sys.query_store_runtime_stats rs
+      ON rs.plan_id = p.plan_id
+    JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
+      ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
+    WHERE 1=1
+      AND (
+            (@IncludeSP = 1 AND q.object_id > 0)
+         OR (@IncludeAdhoc = 1 AND (q.object_id = 0 OR q.object_id IS NULL))
+      )
+      AND (@StartTime IS NULL OR rsi.start_time >= @StartTime)
+      AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
+)
+INSERT #QS_Text (SourceDb, query_text_id, query_sql_text, NormalizedText, DetectedType)
+SELECT
+      @DbName AS SourceDb
+    , qt.query_text_id
+    , qt.query_sql_text
+    , LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' '')))) AS NormalizedText
+    , CASE
+          WHEN @StatementType = ''ALL'' THEN NULL
+          ELSE
+          (
+              SELECT TOP (1) v.Typ
+              FROM
               (
-                  SELECT TOP (1) v.Typ
-                  FROM
-                  (
-                      SELECT Typ=''SELECT'',
-                             Pos=CASE
-                                     WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''SELECT%'' THEN 1
-                                     ELSE NULLIF(PATINDEX(''%SELECT%'', UPPER(x.CleanNoParamBlock)),0)
-                                 END
-                      UNION ALL
-                      SELECT Typ=''INSERT'',
-                             Pos=CASE
-                                     WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''INSERT%'' THEN 1
-                                     ELSE NULLIF(PATINDEX(''%INSERT%'', UPPER(x.CleanNoParamBlock)),0)
-                                 END
-                      UNION ALL
-                      SELECT Typ=''UPDATE'',
-                             Pos=CASE
-                                     WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''UPDATE%'' THEN 1
-                                     ELSE NULLIF(PATINDEX(''%UPDATE%'', UPPER(x.CleanNoParamBlock)),0)
-                                 END
-                      UNION ALL
-                      SELECT Typ=''DELETE'',
-                             Pos=CASE
-                                     WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''DELETE%'' THEN 1
-                                     ELSE NULLIF(PATINDEX(''%DELETE%'', UPPER(x.CleanNoParamBlock)),0)
-                                 END
-                  ) v
-                  WHERE v.Pos IS NOT NULL
-                  ORDER BY v.Pos ASC
-              )
-          END AS DetectedType
-    FROM ids
-    JOIN {{DB}}.sys.query_store_query_text qt
-      ON qt.query_text_id = ids.query_text_id
-    OUTER APPLY
-    (
-        SELECT RawClean =
-            LTRIM(REPLACE(REPLACE(REPLACE(LEFT(qt.query_sql_text, 4000), CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))
-    ) c0
-    OUTER APPLY
-    (
-        SELECT CleanNoParamBlock =
-            CASE
-                WHEN c0.RawClean LIKE ''(%'' AND CHARINDEX('')'', c0.RawClean) > 0
-                    THEN LTRIM(SUBSTRING(c0.RawClean, CHARINDEX('')'', c0.RawClean) + 1, 4000))
-                ELSE c0.RawClean
-            END
-    ) x;
-END
-ELSE
-BEGIN
-    ;WITH ids AS
-    (
-        SELECT DISTINCT q.query_text_id
-        FROM {{DB}}.sys.query_store_query q
-        JOIN {{DB}}.sys.query_store_plan p
-          ON p.query_id = q.query_id
-        JOIN {{DB}}.sys.query_store_runtime_stats rs
-          ON rs.plan_id = p.plan_id
-        JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
-          ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
-        WHERE 1=1
-          AND (
-                (@IncludeSP = 1 AND q.object_id > 0)
-             OR (@IncludeAdhoc = 1 AND (q.object_id = 0 OR q.object_id IS NULL))
+                  SELECT Typ=''SELECT'',
+                         Pos=CASE
+                                 WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''SELECT%'' THEN 1
+                                 ELSE NULLIF(PATINDEX(''%SELECT%'', UPPER(x.CleanNoParamBlock)),0)
+                             END
+                  UNION ALL
+                  SELECT Typ=''INSERT'',
+                         Pos=CASE
+                                 WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''INSERT%'' THEN 1
+                                 ELSE NULLIF(PATINDEX(''%INSERT%'', UPPER(x.CleanNoParamBlock)),0)
+                             END
+                  UNION ALL
+                  SELECT Typ=''UPDATE'',
+                         Pos=CASE
+                                 WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''UPDATE%'' THEN 1
+                                 ELSE NULLIF(PATINDEX(''%UPDATE%'', UPPER(x.CleanNoParamBlock)),0)
+                             END
+                  UNION ALL
+                  SELECT Typ=''DELETE'',
+                         Pos=CASE
+                                 WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''DELETE%'' THEN 1
+                                 ELSE NULLIF(PATINDEX(''%DELETE%'', UPPER(x.CleanNoParamBlock)),0)
+                             END
+              ) v
+              WHERE v.Pos IS NOT NULL
+              ORDER BY v.Pos ASC
           )
-          AND (@StartTime IS NULL OR rsi.start_time >= @StartTime)
-          AND (@EndTime   IS NULL OR rsi.start_time <  @EndTime)
-    )
-    INSERT #QS_Text (SourceDb, query_text_id, query_sql_text, NormalizedText, DetectedType)
-    SELECT
-          @DbName AS SourceDb
-        , qt.query_text_id
-        , qt.query_sql_text
-        , CASE WHEN @NeedTextProcessing = 1
-               THEN LOWER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(qt.query_sql_text, CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))))
-               ELSE NULL
-          END AS NormalizedText
-        , CASE
-              WHEN @NeedTextProcessing = 0 THEN NULL
-              WHEN @StatementType = ''ALL'' THEN NULL
-              ELSE
-              (
-                  SELECT TOP (1) v.Typ
-                  FROM
-                  (
-                      SELECT Typ=''SELECT'',
-                             Pos=CASE
-                                     WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''SELECT%'' THEN 1
-                                     ELSE NULLIF(PATINDEX(''%SELECT%'', UPPER(x.CleanNoParamBlock)),0)
-                                 END
-                      UNION ALL
-                      SELECT Typ=''INSERT'',
-                             Pos=CASE
-                                     WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''INSERT%'' THEN 1
-                                     ELSE NULLIF(PATINDEX(''%INSERT%'', UPPER(x.CleanNoParamBlock)),0)
-                                 END
-                      UNION ALL
-                      SELECT Typ=''UPDATE'',
-                             Pos=CASE
-                                     WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''UPDATE%'' THEN 1
-                                     ELSE NULLIF(PATINDEX(''%UPDATE%'', UPPER(x.CleanNoParamBlock)),0)
-                                 END
-                      UNION ALL
-                      SELECT Typ=''DELETE'',
-                             Pos=CASE
-                                     WHEN UPPER(LTRIM(x.CleanNoParamBlock)) LIKE ''DELETE%'' THEN 1
-                                     ELSE NULLIF(PATINDEX(''%DELETE%'', UPPER(x.CleanNoParamBlock)),0)
-                                 END
-                  ) v
-                  WHERE v.Pos IS NOT NULL
-                  ORDER BY v.Pos ASC
-              )
-          END AS DetectedType
-    FROM ids
-    JOIN {{DB}}.sys.query_store_query_text qt
-      ON qt.query_text_id = ids.query_text_id
-    OUTER APPLY
-    (
-        SELECT RawClean =
-            LTRIM(REPLACE(REPLACE(REPLACE(LEFT(qt.query_sql_text, 4000), CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))
-    ) c0
-    OUTER APPLY
-    (
-        SELECT CleanNoParamBlock =
-            CASE
-                WHEN c0.RawClean LIKE ''(%'' AND CHARINDEX('')'', c0.RawClean) > 0
-                    THEN LTRIM(SUBSTRING(c0.RawClean, CHARINDEX('')'', c0.RawClean) + 1, 4000))
-                ELSE c0.RawClean
-            END
-    ) x;
-END
+      END AS DetectedType
+FROM ids
+JOIN {{DB}}.sys.query_store_query_text qt
+  ON qt.query_text_id = ids.query_text_id
+OUTER APPLY
+(
+    SELECT RawClean =
+        LTRIM(REPLACE(REPLACE(REPLACE(LEFT(qt.query_sql_text, 4000), CHAR(13), '' ''), CHAR(10), '' ''), CHAR(9), '' ''))
+) c0
+OUTER APPLY
+(
+    SELECT CleanNoParamBlock =
+        CASE
+            WHEN c0.RawClean LIKE ''(%'' AND CHARINDEX('')'', c0.RawClean) > 0
+                THEN LTRIM(SUBSTRING(c0.RawClean, CHARINDEX('')'', c0.RawClean) + 1, 4000))
+            ELSE c0.RawClean
+        END
+) x;
 ';
 
 DECLARE @textSqlL nvarchar(max) = REPLACE(@textTmpl, N'{{DB}}', QUOTENAME(@DbLower));
@@ -308,15 +218,13 @@ DECLARE @textSqlH nvarchar(max) = REPLACE(@textTmpl, N'{{DB}}', QUOTENAME(@DbHig
 
 EXEC sp_executesql
     @textSqlL,
-    N'@DbName sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10), @NoTimeFilter bit, @NeedTextProcessing bit',
-    @DbName=@DbLower, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType,
-    @NoTimeFilter=@NoTimeFilter, @NeedTextProcessing=@NeedTextProcessing;
+    N'@DbName sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+    @DbName=@DbLower, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
 EXEC sp_executesql
     @textSqlH,
-    N'@DbName sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10), @NoTimeFilter bit, @NeedTextProcessing bit',
-    @DbName=@DbHigher, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType,
-    @NoTimeFilter=@NoTimeFilter, @NeedTextProcessing=@NeedTextProcessing;
+    N'@DbName sysname, @IncludeAdhoc bit, @IncludeSP bit, @StartTime datetime2(0), @EndTime datetime2(0), @StatementType varchar(10)',
+    @DbName=@DbHigher, @IncludeAdhoc=@IncludeAdhoc, @IncludeSP=@IncludeSP, @StartTime=@StartTime, @EndTime=@EndTime, @StatementType=@StatementType;
 
 -------------------------------------------------------------------------------------------------------------------
 -- Temp table: Main aggregation
@@ -343,9 +251,6 @@ CREATE TABLE #QS_Agg
     IntervalEndMax        datetime2(0)   NULL,
     ConfidenceNote        varchar(50)    NOT NULL
 );
-
-CREATE CLUSTERED INDEX CX_QS_Agg
-ON #QS_Agg (SourceDb, GroupKeyHash, QueryType, ObjName);
 
 -------------------------------------------------------------------------------------------------------------------
 -- Detect whether runtime_stats_interval has end_time
@@ -392,10 +297,16 @@ SELECT
       @DbName AS SourceDb
     , CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END AS QueryType
     , CASE WHEN q.object_id > 0
-           THEN (sch.name COLLATE DATABASE_DEFAULT) + ''.'' + (obj.name COLLATE DATABASE_DEFAULT)
+           THEN (sch.name + ''.'' + obj.name){{COLLATE}}
            ELSE NULL
       END AS ObjName
-    , gh.GroupKeyHash
+    , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+          CASE
+              WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+              WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+              ELSE t.NormalizedText
+          END
+      )) AS GroupKeyHash
     , q.query_hash
     , MIN(t.query_sql_text) AS QueryTextSample
     , MIN(t.NormalizedText) AS NormalizedTextSample
@@ -437,17 +348,8 @@ JOIN {{DB}}.sys.query_store_runtime_stats rs
 JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
   ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
 JOIN #QS_Text t
-  ON t.SourceDb = @DbName
+  ON t.SourceDb{{COLLATE}} = @DbName{{COLLATE}}
  AND t.query_text_id = q.query_text_id
-CROSS APPLY
-(
-    SELECT GroupKeyHash =
-        CASE
-            WHEN @GroupBy = ''QueryHash'' THEN HASHBYTES(''SHA2_256'', q.query_hash)
-            WHEN @GroupBy = ''QueryText'' THEN HASHBYTES(''SHA2_256'', CONVERT(varbinary(max), t.query_sql_text))
-            ELSE                              HASHBYTES(''SHA2_256'', CONVERT(varbinary(max), t.NormalizedText))
-        END
-) gh
 LEFT JOIN {{DB}}.sys.objects obj
   ON obj.object_id = q.object_id
 LEFT JOIN {{DB}}.sys.schemas sch
@@ -466,27 +368,39 @@ WHERE 1=1
 GROUP BY
       q.object_id, sch.name, obj.name
     , q.query_hash
-    , gh.GroupKeyHash;
+    , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+          CASE
+              WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+              WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+              ELSE t.NormalizedText
+          END
+      ));
 ';
 
 DECLARE @sqlL nvarchar(max) =
     REPLACE(
       REPLACE(
-        REPLACE(@tmpl, N'{{DB}}', QUOTENAME(@DbLower)),
-        N'{{HAS_END_TIME}}', CAST(@HasEndTime_L AS nvarchar(1))
+        REPLACE(
+          REPLACE(@tmpl, N'{{DB}}', QUOTENAME(@DbLower)),
+          N'{{HAS_END_TIME}}', CAST(@HasEndTime_L AS nvarchar(1))
+        ),
+        N'{{INTERVAL_END_EXPR}}',
+        CASE WHEN @HasEndTime_L = 1 THEN N'MAX(rsi.end_time)' ELSE N'MAX(rsi.start_time)' END
       ),
-      N'{{INTERVAL_END_EXPR}}',
-      CASE WHEN @HasEndTime_L = 1 THEN N'MAX(rsi.end_time)' ELSE N'MAX(rsi.start_time)' END
+      N'{{COLLATE}}', @CollateClause
     );
 
 DECLARE @sqlH nvarchar(max) =
     REPLACE(
       REPLACE(
-        REPLACE(@tmpl, N'{{DB}}', QUOTENAME(@DbHigher)),
-        N'{{HAS_END_TIME}}', CAST(@HasEndTime_H AS nvarchar(1))
+        REPLACE(
+          REPLACE(@tmpl, N'{{DB}}', QUOTENAME(@DbHigher)),
+          N'{{HAS_END_TIME}}', CAST(@HasEndTime_H AS nvarchar(1))
+        ),
+        N'{{INTERVAL_END_EXPR}}',
+        CASE WHEN @HasEndTime_H = 1 THEN N'MAX(rsi.end_time)' ELSE N'MAX(rsi.start_time)' END
       ),
-      N'{{INTERVAL_END_EXPR}}',
-      CASE WHEN @HasEndTime_H = 1 THEN N'MAX(rsi.end_time)' ELSE N'MAX(rsi.start_time)' END
+      N'{{COLLATE}}', @CollateClause
     );
 
 EXEC sp_executesql
@@ -588,9 +502,6 @@ FULL OUTER JOIN b
  AND ISNULL(a.QueryType,'') = ISNULL(b.QueryType,'')
  AND ISNULL(a.ObjName,'')   = ISNULL(b.ObjName,'');
 
-CREATE CLUSTERED INDEX CX_Compare
-ON #Compare (GroupKeyHash, QueryType, ObjName);
-
 -------------------------------------------------------------------------------------------------------------------
 -- Build filtered group set and compute DominantPlanId/QueryId for Resultset#1 + Persist
 -------------------------------------------------------------------------------------------------------------------
@@ -628,18 +539,24 @@ CREATE TABLE #DominantPlans_All
     AvgMetric    decimal(38,6) NOT NULL
 );
 
-CREATE CLUSTERED INDEX CX_DomPlansAll
-ON #DominantPlans_All (SourceDb, GroupKeyHash, QueryType, ObjName);
-
+-------------------------------------------------------------------------------------------------------------------
+-- Dynamic SQL: Inside dominant-plan extraction
+-------------------------------------------------------------------------------------------------------------------
 DECLARE @domTmpl nvarchar(max) = N'
 ;WITH planAgg AS
 (
     SELECT
           @DbName AS SourceDb
-        , gh.GroupKeyHash
+        , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+              CASE
+                  WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                  WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                  ELSE t.NormalizedText
+              END
+          )) AS GroupKeyHash
         , CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END AS QueryType
         , CASE WHEN q.object_id > 0
-               THEN (sch.name COLLATE DATABASE_DEFAULT) + ''.'' + (obj.name COLLATE DATABASE_DEFAULT)
+               THEN (sch.name + ''.'' + obj.name){{COLLATE}}
                ELSE NULL
           END AS ObjName
         , p.plan_id AS PlanId
@@ -663,17 +580,8 @@ DECLARE @domTmpl nvarchar(max) = N'
     JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
       ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
     JOIN #QS_Text t
-      ON t.SourceDb = @DbName
+      ON t.SourceDb{{COLLATE}} = @DbName{{COLLATE}}
      AND t.query_text_id = q.query_text_id
-    CROSS APPLY
-    (
-        SELECT GroupKeyHash =
-            CASE
-                WHEN @GroupBy = ''QueryHash'' THEN HASHBYTES(''SHA2_256'', q.query_hash)
-                WHEN @GroupBy = ''QueryText'' THEN HASHBYTES(''SHA2_256'', CONVERT(varbinary(max), t.query_sql_text))
-                ELSE                              HASHBYTES(''SHA2_256'', CONVERT(varbinary(max), t.NormalizedText))
-            END
-    ) gh
     LEFT JOIN {{DB}}.sys.objects obj
       ON obj.object_id = q.object_id
     LEFT JOIN {{DB}}.sys.schemas sch
@@ -693,19 +601,29 @@ DECLARE @domTmpl nvarchar(max) = N'
       (
           SELECT 1
           FROM #FilteredGroups fg
-          WHERE fg.GroupKeyHash = gh.GroupKeyHash
+          WHERE fg.GroupKeyHash = HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+                CASE
+                    WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                    WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                    ELSE t.NormalizedText
+                END
+          ))
             AND fg.QueryType = CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END
-            AND fg.ObjNameNorm = ISNULL(
-                    CASE WHEN q.object_id > 0
-                         THEN (sch.name COLLATE DATABASE_DEFAULT) + ''.'' + (obj.name COLLATE DATABASE_DEFAULT)
-                         ELSE NULL
-                    END
-                , '''')
+            AND fg.ObjNameNorm{{COLLATE}} = ISNULL(
+                  CASE WHEN q.object_id > 0 THEN (sch.name + ''.'' + obj.name){{COLLATE}} ELSE NULL END,
+                  ''''
+                ){{COLLATE}}
       )
     GROUP BY
           q.object_id, sch.name, obj.name
         , q.query_hash
-        , gh.GroupKeyHash
+        , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+              CASE
+                  WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                  WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                  ELSE t.NormalizedText
+              END
+          ))
         , p.plan_id
         , q.query_id
 ),
@@ -734,8 +652,8 @@ FROM r
 WHERE rn = 1;
 ';
 
-DECLARE @domSqlL nvarchar(max) = REPLACE(@domTmpl, N'{{DB}}', QUOTENAME(@DbLower));
-DECLARE @domSqlH nvarchar(max) = REPLACE(@domTmpl, N'{{DB}}', QUOTENAME(@DbHigher));
+DECLARE @domSqlL nvarchar(max) = REPLACE(REPLACE(@domTmpl, N'{{DB}}', QUOTENAME(@DbLower)), N'{{COLLATE}}', @CollateClause);
+DECLARE @domSqlH nvarchar(max) = REPLACE(REPLACE(@domTmpl, N'{{DB}}', QUOTENAME(@DbHigher)), N'{{COLLATE}}', @CollateClause);
 
 EXEC sp_executesql
     @domSqlL,
@@ -758,9 +676,6 @@ CREATE TABLE #DomPairs_All
     DominantQueryId_L bigint NULL,
     DominantQueryId_H bigint NULL
 );
-
-CREATE CLUSTERED INDEX CX_DomPairsAll
-ON #DomPairs_All (GroupKeyHash, QueryType, ObjName);
 
 INSERT #DomPairs_All
 SELECT
@@ -895,9 +810,6 @@ SELECT DISTINCT
 FROM filtered f
 WHERE f.ConfidenceFlags LIKE '%MULTI_PLAN%';
 
-CREATE CLUSTERED INDEX CX_MultiGroups
-ON #MultiGroups (GroupKeyHash, QueryType, ObjName);
-
 IF EXISTS (SELECT 1 FROM #MultiGroups)
 BEGIN
     IF OBJECT_ID('tempdb..#PlanAgg') IS NOT NULL DROP TABLE #PlanAgg;
@@ -919,9 +831,6 @@ BEGIN
         PlanXmlHash      varbinary(32)  NULL
     );
 
-    CREATE CLUSTERED INDEX CX_PlanAgg
-    ON #PlanAgg (SourceDb, GroupKeyHash, QueryType, ObjName, PlanId);
-
     DECLARE @planTmpl nvarchar(max) = N'
     INSERT INTO #PlanAgg
     (
@@ -936,10 +845,16 @@ BEGIN
           @DbName AS SourceDb
         , CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END AS QueryType
         , CASE WHEN q.object_id > 0
-               THEN (sch.name COLLATE DATABASE_DEFAULT) + ''.'' + (obj.name COLLATE DATABASE_DEFAULT)
+               THEN (sch.name + ''.'' + obj.name){{COLLATE}}
                ELSE NULL
           END AS ObjName
-        , gh.GroupKeyHash
+        , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+              CASE
+                  WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                  WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                  ELSE t.NormalizedText
+              END
+          )) AS GroupKeyHash
         , p.plan_id AS PlanId
         , q.query_id AS QueryId
         , SUM(rs.count_executions) AS ExecCount
@@ -975,17 +890,8 @@ BEGIN
     JOIN {{DB}}.sys.query_store_runtime_stats_interval rsi
       ON rsi.runtime_stats_interval_id = rs.runtime_stats_interval_id
     JOIN #QS_Text t
-      ON t.SourceDb = @DbName
+      ON t.SourceDb{{COLLATE}} = @DbName{{COLLATE}}
      AND t.query_text_id = q.query_text_id
-    CROSS APPLY
-    (
-        SELECT GroupKeyHash =
-            CASE
-                WHEN @GroupBy = ''QueryHash'' THEN HASHBYTES(''SHA2_256'', q.query_hash)
-                WHEN @GroupBy = ''QueryText'' THEN HASHBYTES(''SHA2_256'', CONVERT(varbinary(max), t.query_sql_text))
-                ELSE                              HASHBYTES(''SHA2_256'', CONVERT(varbinary(max), t.NormalizedText))
-            END
-    ) gh
     LEFT JOIN {{DB}}.sys.objects obj
       ON obj.object_id = q.object_id
     LEFT JOIN {{DB}}.sys.schemas sch
@@ -1005,19 +911,29 @@ BEGIN
       (
           SELECT 1
           FROM #MultiGroups mg
-          WHERE mg.GroupKeyHash = gh.GroupKeyHash
+          WHERE mg.GroupKeyHash = HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+                CASE
+                    WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                    WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                    ELSE t.NormalizedText
+                END
+          ))
             AND mg.QueryType = CASE WHEN q.object_id > 0 THEN ''SP'' ELSE ''Adhoc'' END
-            AND ISNULL(mg.ObjName, '''') = ISNULL(
-                    CASE WHEN q.object_id > 0
-                         THEN (sch.name COLLATE DATABASE_DEFAULT) + ''.'' + (obj.name COLLATE DATABASE_DEFAULT)
-                         ELSE NULL
-                    END
-                , '''')
+            AND ISNULL(mg.ObjName, ''''){{COLLATE}} = ISNULL(
+                  CASE WHEN q.object_id > 0 THEN (sch.name + ''.'' + obj.name){{COLLATE}} ELSE NULL END,
+                  ''''
+                ){{COLLATE}}
       )
     GROUP BY
           q.object_id, sch.name, obj.name
         , q.query_hash
-        , gh.GroupKeyHash
+        , HASHBYTES(''SHA2_256'', CONVERT(varbinary(max),
+              CASE
+                  WHEN @GroupBy = ''QueryHash'' THEN CONVERT(nvarchar(100), q.query_hash, 1)
+                  WHEN @GroupBy = ''QueryText'' THEN t.query_sql_text
+                  ELSE t.NormalizedText
+              END
+          ))
         , p.plan_id
         , q.query_id
         , p.query_plan;
@@ -1025,16 +941,22 @@ BEGIN
 
     DECLARE @planSqlL nvarchar(max) =
         REPLACE(
-          REPLACE(@planTmpl, N'{{DB}}', QUOTENAME(@DbLower)),
-          N'{{INTERVAL_END_EXPR}}',
-          CASE WHEN @HasEndTime_L = 1 THEN N'MAX(rsi.end_time)' ELSE N'MAX(rsi.start_time)' END
+          REPLACE(
+            REPLACE(@planTmpl, N'{{DB}}', QUOTENAME(@DbLower)),
+            N'{{INTERVAL_END_EXPR}}',
+            CASE WHEN @HasEndTime_L = 1 THEN N'MAX(rsi.end_time)' ELSE N'MAX(rsi.start_time)' END
+          ),
+          N'{{COLLATE}}', @CollateClause
         );
 
     DECLARE @planSqlH nvarchar(max) =
         REPLACE(
-          REPLACE(@planTmpl, N'{{DB}}', QUOTENAME(@DbHigher)),
-          N'{{INTERVAL_END_EXPR}}',
-          CASE WHEN @HasEndTime_H = 1 THEN N'MAX(rsi.end_time)' ELSE N'MAX(rsi.start_time)' END
+          REPLACE(
+            REPLACE(@planTmpl, N'{{DB}}', QUOTENAME(@DbHigher)),
+            N'{{INTERVAL_END_EXPR}}',
+            CASE WHEN @HasEndTime_H = 1 THEN N'MAX(rsi.end_time)' ELSE N'MAX(rsi.start_time)' END
+          ),
+          N'{{COLLATE}}', @CollateClause
         );
 
     EXEC sp_executesql
@@ -1119,9 +1041,6 @@ BEGIN
         TotalMetric  decimal(38,6) NOT NULL
     );
 
-    CREATE CLUSTERED INDEX CX_DominantPlans
-    ON #DominantPlans (SourceDb, GroupKeyHash, QueryType, ObjName);
-
     ;WITH r AS
     (
         SELECT
@@ -1164,9 +1083,6 @@ BEGIN
         AvgM_H        decimal(38,6) NULL
     );
 
-    CREATE CLUSTERED INDEX CX_DomPairs
-    ON #DomPairs (GroupKeyHash, QueryType, ObjName);
-
     INSERT #DomPairs
     SELECT
           COALESCE(b.GroupKeyHash, a.GroupKeyHash) AS GroupKeyHash
@@ -1185,6 +1101,244 @@ BEGIN
       ON a.GroupKeyHash = b.GroupKeyHash
      AND ISNULL(a.QueryType,'') = ISNULL(b.QueryType,'')
      AND ISNULL(a.ObjName,'')   = ISNULL(b.ObjName,'');
+
+    IF OBJECT_ID('tempdb..#PlanXml') IS NOT NULL DROP TABLE #PlanXml;
+    CREATE TABLE #PlanXml
+    (
+        SourceDb      sysname       NOT NULL,
+        GroupKeyHash  varbinary(32) NOT NULL,
+        QueryType     varchar(10)   NOT NULL,
+        ObjName       sysname       NULL,
+        PlanId        bigint        NOT NULL,
+        QueryId       bigint        NULL,
+        QueryPlanXml  xml           NULL,
+        QueryPlanText nvarchar(max) NULL
+    );
+
+    DECLARE @px nvarchar(max);
+
+    SET @px = N'
+    INSERT #PlanXml (SourceDb, GroupKeyHash, QueryType, ObjName, PlanId, QueryId, QueryPlanXml, QueryPlanText)
+    SELECT
+          @DbName
+        , dp.GroupKeyHash
+        , dp.QueryType
+        , dp.ObjName
+        , dp.PlanId_L
+        , dp.QueryId_L
+        , p.query_plan
+        , CONVERT(nvarchar(max), p.query_plan)
+    FROM ' + QUOTENAME(@DbLower) + N'.sys.query_store_plan p
+    JOIN #DomPairs dp
+      ON dp.PlanId_L = p.plan_id
+     AND (dp.QueryId_L IS NULL OR dp.QueryId_L = p.query_id)
+    WHERE dp.PlanId_L IS NOT NULL;';
+    EXEC sp_executesql @px, N'@DbName sysname', @DbName=@DbLower;
+
+    SET @px = N'
+    INSERT #PlanXml (SourceDb, GroupKeyHash, QueryType, ObjName, PlanId, QueryId, QueryPlanXml, QueryPlanText)
+    SELECT
+          @DbName
+        , dp.GroupKeyHash
+        , dp.QueryType
+        , dp.ObjName
+        , dp.PlanId_H
+        , dp.QueryId_H
+        , p.query_plan
+        , CONVERT(nvarchar(max), p.query_plan)
+    FROM ' + QUOTENAME(@DbHigher) + N'.sys.query_store_plan p
+    JOIN #DomPairs dp
+      ON dp.PlanId_H = p.plan_id
+     AND (dp.QueryId_H IS NULL OR dp.QueryId_H = p.query_id)
+    WHERE dp.PlanId_H IS NOT NULL;';
+    EXEC sp_executesql @px, N'@DbName sysname', @DbName=@DbHigher;
+
+    IF OBJECT_ID('tempdb..#PlanInd') IS NOT NULL DROP TABLE #PlanInd;
+    CREATE TABLE #PlanInd
+    (
+        SourceDb          sysname       NOT NULL,
+        GroupKeyHash      varbinary(32) NOT NULL,
+        QueryType         varchar(10)   NOT NULL,
+        ObjName           sysname       NULL,
+        PlanId            bigint        NOT NULL,
+        QueryId           bigint        NULL,
+        QueryPlanXml      xml           NULL,
+        PlanXmlHash       varbinary(32) NULL,
+        IndexSeekCount    int NULL,
+        IndexScanCount    int NULL,
+        TableScanCount    int NULL,
+        HasHashJoin       bit NULL,
+        HasMergeJoin      bit NULL,
+        HasNestedLoops    bit NULL,
+        HasParallelism    bit NULL,
+        GrantedMemoryKB   bigint NULL,
+        HasSpillToTempDb  bit NULL,
+        HasMissingIndex   bit NULL
+    );
+
+    ;WITH x AS
+    (
+        SELECT
+              px.SourceDb
+            , px.GroupKeyHash
+            , px.QueryType
+            , px.ObjName
+            , px.PlanId
+            , px.QueryId
+            , px.QueryPlanXml AS PlanXml
+            , px.QueryPlanText
+        FROM #PlanXml px
+    )
+    INSERT #PlanInd
+    SELECT
+          x.SourceDb
+        , x.GroupKeyHash
+        , x.QueryType
+        , x.ObjName
+        , x.PlanId
+        , x.QueryId
+        , x.PlanXml AS QueryPlanXml
+        , CASE WHEN x.QueryPlanText IS NULL THEN NULL
+               ELSE HASHBYTES('SHA2_256', CONVERT(varbinary(max), x.QueryPlanText))
+          END AS PlanXmlHash
+        , v.IndexSeekCount
+        , v.IndexScanCount
+        , v.TableScanCount
+        , v.HasHashJoin
+        , v.HasMergeJoin
+        , v.HasNestedLoops
+        , v.HasParallelism
+        , v.GrantedMemoryKB
+        , v.HasSpillToTempDb
+        , v.HasMissingIndex
+    FROM x
+    OUTER APPLY
+    (
+        SELECT
+              IndexSeekCount =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       ELSE (SELECT COUNT(*) FROM x.PlanXml.nodes('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //RelOp[@PhysicalOp="Index Seek"]') AS t(n))
+                  END
+            , IndexScanCount =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       ELSE (SELECT COUNT(*) FROM x.PlanXml.nodes('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //RelOp[@PhysicalOp="Index Scan"]') AS t(n))
+                  END
+            , TableScanCount =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       ELSE (SELECT COUNT(*) FROM x.PlanXml.nodes('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //RelOp[@PhysicalOp="Table Scan"]') AS t(n))
+                  END
+            , HasHashJoin =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       WHEN x.PlanXml.exist('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //RelOp[@PhysicalOp="Hash Match"]') = 1 THEN 1 ELSE 0 END
+            , HasMergeJoin =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       WHEN x.PlanXml.exist('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //RelOp[@PhysicalOp="Merge Join"]') = 1 THEN 1 ELSE 0 END
+            , HasNestedLoops =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       WHEN x.PlanXml.exist('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //RelOp[@PhysicalOp="Nested Loops"]') = 1 THEN 1 ELSE 0 END
+            , HasParallelism =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       WHEN x.PlanXml.exist('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //RelOp[@PhysicalOp="Parallelism"]') = 1 THEN 1 ELSE 0 END
+            , GrantedMemoryKB =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       ELSE TRY_CONVERT(bigint,
+                           x.PlanXml.value('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan";
+                                            (//MemoryGrantInfo/@GrantedMemory)[1]', 'nvarchar(50)')
+                         )
+                  END
+            , HasSpillToTempDb =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       WHEN x.PlanXml.exist('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //Warnings/SpillToTempDb') = 1 THEN 1 ELSE 0 END
+            , HasMissingIndex =
+                  CASE WHEN x.PlanXml IS NULL THEN NULL
+                       WHEN x.PlanXml.exist('declare default element namespace "http://schemas.microsoft.com/sqlserver/2004/07/showplan"; //MissingIndexes') = 1 THEN 1 ELSE 0 END
+    ) v;
+
+    DECLARE @out4 nvarchar(max) = N'
+    ;WITH c AS
+    (
+        SELECT *
+        FROM #Compare
+        WHERE RegressionRatio IS NOT NULL
+          AND AvgMetric_H > AvgMetric_L
+          AND (@MinExecCount IS NULL OR (ExecCount_L >= @MinExecCount AND ExecCount_H >= @MinExecCount))
+          AND (@MinRegressionRatio IS NULL OR RegressionRatio >= @MinRegressionRatio)
+          AND ConfidenceFlags LIKE ''%MULTI_PLAN%''
+          AND (@OnlyMultiPlan = 0 OR ConfidenceFlags LIKE ''%MULTI_PLAN%'')
+    ),
+    pL AS (SELECT * FROM #PlanInd WHERE SourceDb = @DbLower),
+    pH AS (SELECT * FROM #PlanInd WHERE SourceDb = @DbHigher)
+    SELECT
+          c.QueryType
+        , c.ObjName
+        , CONVERT(varchar(66), c.GroupKeyHash, 1) AS GroupKeyHashHex
+        , CONVERT(decimal(38,2), ROUND(c.ImpactScore, 2))     AS ImpactScore
+        , CONVERT(decimal(19,2), ROUND(c.RegressionRatio, 2)) AS RegressionRatio
+        , CONCAT(COALESCE(CONVERT(varchar(30), c.ExecCount_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), c.ExecCount_H), ''?'')) AS [ExecCount_L-H]
+        , CONCAT(
+              COALESCE(CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(c.AvgMetric_L, 2))), ''?''), '' - '',
+              COALESCE(CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(c.AvgMetric_H, 2))), ''?'')
+          ) AS [AvgMetric_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(30), dp.PlanId_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.PlanId_H), ''?'')) AS [DominantPlanId_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(30), dp.QueryId_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.QueryId_H), ''?'')) AS [DominantQueryId_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(30), dp.Exec_L), ''?''), '' - '', COALESCE(CONVERT(varchar(30), dp.Exec_H), ''?'')) AS [DominantPlanExec_L-H]
+        , CONCAT(
+              COALESCE(CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(dp.AvgM_L, 2))), ''?''), '' - '',
+              COALESCE(CONVERT(varchar(30), CONVERT(decimal(38,2), ROUND(dp.AvgM_H, 2))), ''?'')
+          ) AS [DominantPlanAvgMetric_L-H]
+        , CONCAT(
+            COALESCE(CONVERT(varchar(66), pL.PlanXmlHash, 1), ''?''),
+            '' - '',
+            COALESCE(CONVERT(varchar(66), pH.PlanXmlHash, 1), ''?'')
+          ) AS [PlanXmlHashHex_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(20), pL.IndexSeekCount), ''?''), '' - '', COALESCE(CONVERT(varchar(20), pH.IndexSeekCount), ''?'')) AS [IndexSeekCount_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(20), pL.IndexScanCount), ''?''), '' - '', COALESCE(CONVERT(varchar(20), pH.IndexScanCount), ''?'')) AS [IndexScanCount_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(20), pL.TableScanCount), ''?''), '' - '', COALESCE(CONVERT(varchar(20), pH.TableScanCount), ''?'')) AS [TableScanCount_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasHashJoin),    ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasHashJoin),    ''?'')) AS [HasHashJoin_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasMergeJoin),   ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasMergeJoin),   ''?'')) AS [HasMergeJoin_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasNestedLoops), ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasNestedLoops), ''?'')) AS [HasNestedLoops_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasParallelism), ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasParallelism), ''?'')) AS [HasParallelism_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(30), pL.GrantedMemoryKB), ''?''), '' - '', COALESCE(CONVERT(varchar(30), pH.GrantedMemoryKB), ''?'')) AS [GrantedMemoryKB_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasSpillToTempDb), ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasSpillToTempDb), ''?'')) AS [SpillToTempDb_L-H]
+        , CONCAT(COALESCE(CONVERT(varchar(1), pL.HasMissingIndex),  ''?''), '' - '', COALESCE(CONVERT(varchar(1), pH.HasMissingIndex),  ''?'')) AS [MissingIndex_L-H]
+        , CONCAT(
+              CASE WHEN pL.PlanXmlHash IS NOT NULL AND pH.PlanXmlHash IS NOT NULL AND pL.PlanXmlHash <> pH.PlanXmlHash THEN ''PLAN_SHAPE_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.HasHashJoin,0)    <> ISNULL(pH.HasHashJoin,0)    THEN ''JOIN_HASH_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.HasMergeJoin,0)   <> ISNULL(pH.HasMergeJoin,0)   THEN ''JOIN_MERGE_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.HasNestedLoops,0) <> ISNULL(pH.HasNestedLoops,0) THEN ''JOIN_NL_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.IndexSeekCount,0) <> ISNULL(pH.IndexSeekCount,0) THEN ''INDEX_SEEK_COUNT_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.IndexScanCount,0) <> ISNULL(pH.IndexScanCount,0) THEN ''INDEX_SCAN_COUNT_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.TableScanCount,0) <> ISNULL(pH.TableScanCount,0) THEN ''TABLE_SCAN_COUNT_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.HasParallelism,0) <> ISNULL(pH.HasParallelism,0) THEN ''PARALLELISM_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.HasSpillToTempDb,0) <> ISNULL(pH.HasSpillToTempDb,0) THEN ''SPILL_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.HasMissingIndex,0) <> ISNULL(pH.HasMissingIndex,0) THEN ''MISSING_INDEX_CHANGED;'' ELSE '''' END,
+              CASE WHEN ISNULL(pL.GrantedMemoryKB,-1) <> ISNULL(pH.GrantedMemoryKB,-1) THEN ''GRANT_CHANGED;'' ELSE '''' END
+          ) AS DiffFlags
+        , c.QueryTextSample
+        , pL.QueryPlanXml AS ' + QUOTENAME('PlanXml_' + @LabelLower) + N'
+        , pH.QueryPlanXml AS ' + QUOTENAME('PlanXml_' + @LabelHigher) + N'
+    FROM c
+    JOIN #DomPairs dp
+      ON dp.GroupKeyHash = c.GroupKeyHash
+     AND ISNULL(dp.QueryType,'''') = ISNULL(c.QueryType,'''')
+     AND ISNULL(dp.ObjName,'''')   = ISNULL(c.ObjName,'''')
+    LEFT JOIN pL
+      ON pL.GroupKeyHash = c.GroupKeyHash
+     AND ISNULL(pL.QueryType,'''') = ISNULL(c.QueryType,'''')
+     AND ISNULL(pL.ObjName,'''')   = ISNULL(c.ObjName,'''')
+     AND pL.PlanId = dp.PlanId_L
+    LEFT JOIN pH
+      ON pH.GroupKeyHash = c.GroupKeyHash
+     AND ISNULL(pH.QueryType,'''') = ISNULL(c.QueryType,'''')
+     AND ISNULL(pH.ObjName,'''')   = ISNULL(c.ObjName,'''')
+     AND pH.PlanId = dp.PlanId_H
+    ORDER BY c.ImpactScore DESC;
+    ';
+
+    EXEC sp_executesql
+        @out4,
+        N'@DbLower sysname, @DbHigher sysname, @MinExecCount bigint, @MinRegressionRatio decimal(9,4), @OnlyMultiPlan bit',
+        @DbLower=@DbLower, @DbHigher=@DbHigher, @MinExecCount=@MinExecCount, @MinRegressionRatio=@MinRegressionRatio, @OnlyMultiPlan=@OnlyMultiPlan;
 END;
 
 -------------------------------------------------------------------------------------------------------------------
