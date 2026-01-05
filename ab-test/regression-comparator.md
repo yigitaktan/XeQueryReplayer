@@ -222,7 +222,7 @@ These two databases are treated as independent evidence sources. The script neve
       - Lower-casing
       - SHA-256 hashing of the normalized text
 
-    This mode is useful for ad-hoc–heavy workloads where the same logical query appears with minor formatting differences, but it can still merge distinct queries if their normalized forms collide.
+    This mode is useful for ad-hoc-heavy workloads where the same logical query appears with minor formatting differences, but it can still merge distinct queries if their normalized forms collide.
   
 
   **Trade-off**:
@@ -434,7 +434,7 @@ This layered output model allows engineers to move from high-level risk identifi
 
 ### PERF Output (Execution Diagnostics)
 
-In addition to result sets, the script prints a **step-by-step performance table** to the Messages tab.
+In addition to result sets, the script prints a **step-by-step performance table** to the SSMS Messages tab.
 
 This includes:
 - Step name
@@ -472,11 +472,11 @@ Key Columns and How to Read Them:
 | `DominantPlanId_L-H`     | LowerCL-HigherCL dominant `plan_id` range for the group (the `plan_id` that was most prevalent / most executed on each side)          |
 | `PlanCount_L-H`          | Number of distinct cached/executed plans per side (LowerCL-HigherCL)                                                              |
 | `ExecCount_L-H`          | Total executions per side (LowerCL-HigherCL)                                                                                          |
-| `Avg<Metric>_L-H`        | Average metric value per execution (LowerCL-HigherCL)                                                                                 |
-| `DeltaAvgMetric`         | `Avg<Metric>_H − Avg<Metric>_L` (absolute change in average metric from LowerCL to HigherCL)                                              |
-| `Total<Metric>_L-H`      | Total metric consumption (LowerCL-HigherCL)                                                                                           |
-| `RegressionRatio`        | `Avg<Metric>_H / NULLIF(Avg<Metric>_L, 0)` (how much worse/better HigherCL is vs LowerCL)                                                 |
-| `ImpactScore`            | `(Avg<Metric>_H − Avg<Metric>_L) × ExecCount_H` (estimated total delta impact in HigherCL execution volume)                               |
+| `AvgMetric_L-H`        | Average metric value per execution (LowerCL-HigherCL)                                                                                 |
+| `DeltaAvgMetric`         | `AvgMetric_H − AvgMetric_L` (absolute change in average metric from LowerCL to HigherCL)                                              |
+| `TotalMetric_L-H`      | Total metric consumption (LowerCL-HigherCL)                                                                                           |
+| `RegressionRatio`        | `AvgMetric_H / NULLIF(AvgMetric_L, 0)` (how much worse/better HigherCL is vs LowerCL)                                                 |
+| `ImpactScore`            | `(AvgMetric_H − AvgMetric_L) × ExecCount_H` (estimated total delta impact in HigherCL execution volume)                               |
 | `ConfidenceFlags`        | Signals that affect trustworthiness (e.g., low executions, high plan count instability, missing side, text/hash mismatch, etc.)           |
 | `QueryTextSample`        | Representative query text for the group (sample to quickly recognize the workload)                                                        |
 
