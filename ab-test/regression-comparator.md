@@ -463,6 +463,28 @@ It lists only queries where:
 
 Key Columns and How to Read Them:
 
+| Column | Meaning |
+|------|---------|
+| QueryType | Query classification based on execution context (e.g., ADHOC, SP). Indicates whether the query originated from ad-hoc execution or a stored procedure. |
+| ObjName | Object name associated with the query, if applicable (e.g., stored procedure name). Empty for pure ad-hoc queries. |
+| GroupKeyHashHex | Unique identifier for the logical query group, derived from the selected grouping strategy (@GroupBy). Serves as the stable correlation key across LowerCL and HigherCL. |
+| QueryIdRange_L-H | query_id ranges observed in LowerCL–HigherCL for the query group. Provided for traceability only; IDs are not expected to match across databases. |
+| QueryHashHex_L-H | Compiled query_hash values (hex) observed in LowerCL–HigherCL, shown side-by-side to detect query hash divergence across compatibility levels. |
+| DominantPlanId_L-H | LowerCL–HigherCL dominant plan_id range for the group. Represents the plan that contributed the most executions and/or impact on each side. |
+| DominantQueryId_L-H | LowerCL–HigherCL dominant query_id range for the group. Identifies the query instance with the highest execution or impact contribution on each side. |
+| PlanCount_L-H | Number of distinct execution plans observed per side (LowerCL–HigherCL). Values greater than 1 indicate plan instability or parameter sensitivity. |
+| ExecCount_L-H | Total execution count per side (LowerCL–HigherCL) aggregated at the query-group level. Used for confidence evaluation and impact weighting. |
+| TotalMetric_L-H | Total aggregated metric consumption per side (LowerCL–HigherCL), calculated using execution-count–weighted aggregation. |
+| AvgMetric_L-H | Average metric value per execution (LowerCL–HigherCL), derived as TotalMetric / ExecCount for each side. |
+| TotalDuration_L-H | Total execution duration per side (LowerCL–HigherCL), aggregated independently from the primary metric. Useful for cross-metric validation. |
+| AvgDuration_L-H | Average execution duration per execution (LowerCL–HigherCL). Often used to contextualize CPU or I/O regressions. |
+| RegressionRatio | AvgMetric_H / NULLIF(AvgMetric_L, 0) indicating relative regression or improvement when moving from LowerCL to HigherCL. |
+| DeltaAvgMetric | Absolute delta in average metric: AvgMetric_H − AvgMetric_L. Represents per-execution cost increase or decrease. |
+| ImpactScore | Estimated total regression impact in HigherCL: (AvgMetric_H − AvgMetric_L) × ExecCount_H. Primary ranking metric for prioritization. |
+| ConfidenceFlags | Indicators affecting result trustworthiness (e.g., LOW_EXEC, MULTI_PLAN, MISSING_ONE_SIDE, INTERVAL_END_FALLBACK). Must be reviewed before mitigation. |
+| QueryTextSample | Representative query text sample for the group, provided to quickly identify the workload and facilitate root-cause analysis. |
+
+
 | Column                   | Meaning                                                                                                                                   |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `GroupKeyHashHex`        | Unique identifier for the logical query group                                                                                             |
