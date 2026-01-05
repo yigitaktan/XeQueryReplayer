@@ -101,8 +101,7 @@ The same Query Store data combined with the same parameter values will always pr
 These two databases are treated as independent evidence sources. The script never assumes that `query_id` or `plan_id` values match between them. Correlation happens through the grouping strategy (`@GroupBy`).
 
 > [!IMPORTANT]
-> The script does **not** assume that `@DbA` is always LowerCL and `@DbB` is always HigherCL.
-> It dynamically reads `sys.databases.compatibility_level` for both databases and assigns:
+> The script does **not** assume that `@DbA` is always LowerCL and `@DbB` is always HigherCL. It dynamically reads `sys.databases.compatibility_level` for both databases and assigns:
 >
 > - **LowerCL** to the database with the smaller compatibility level
 > - **HigherCL** to the database with the larger compatibility level
