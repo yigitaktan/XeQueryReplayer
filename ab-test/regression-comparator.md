@@ -463,26 +463,27 @@ It lists only queries where:
 
 Columns and Their Meanings:
 
-| Column | Meaning |
-|------|---------|
-| QueryType | Query classification based on execution context (e.g., ADHOC, SP). Indicates whether the query originated from ad-hoc execution or a stored procedure. |
-| ObjName | Object name associated with the query, if applicable (e.g., stored procedure name). Empty for pure ad-hoc queries. |
-| GroupKeyHashHex | Unique identifier for the logical query group, derived from the selected grouping strategy (`@GroupBy`). Serves as the stable correlation key across LowerCL and HigherCL. |
-| QueryIdRange_L-H | query_id ranges observed in LowerCL-HigherCL for the query group. Provided for traceability only; IDs are not expected to match across databases. |
-| QueryHashHex_L-H | Compiled query_hash values (hex) observed in LowerCL-HigherCL, shown side-by-side to detect query hash divergence across compatibility levels. |
-| DominantPlanId_L-H | LowerCL-HigherCL dominant plan_id range for the group. Represents the plan that contributed the most executions and/or impact on each side. |
-| DominantQueryId_L-H | LowerCL-HigherCL dominant query_id range for the group. Identifies the query instance with the highest execution or impact contribution on each side. |
-| PlanCount_L-H | Number of distinct execution plans observed per side (LowerCL-HigherCL). Values greater than 1 indicate plan instability or parameter sensitivity. |
-| ExecCount_L-H | Total execution count per side (LowerCL-HigherCL) aggregated at the query-group level. Used for confidence evaluation and impact weighting. |
-| TotalMetric_L-H | Total aggregated metric consumption per side (LowerCL-HigherCL), calculated using execution-count-weighted aggregation. |
-| AvgMetric_L-H | Average metric value per execution (LowerCL-HigherCL), derived as `TotalMetric / ExecCount` for each side. |
-| TotalDuration_L-H | Total execution duration per side (LowerCL-HigherCL), aggregated independently from the primary metric. Useful for cross-metric validation. |
-| AvgDuration_L-H | Average execution duration per execution (LowerCL-HigherCL). Often used to contextualize CPU or I/O regressions. |
-| RegressionRatio | `AvgMetric_H / NULLIF(AvgMetric_L, 0)` indicating relative regression or improvement when moving from LowerCL to HigherCL. |
-| DeltaAvgMetric | Absolute delta in average metric: `AvgMetric_H - AvgMetric_L`. Represents per-execution cost increase or decrease. |
-| ImpactScore | Estimated total regression impact in HigherCL: `(AvgMetric_H - AvgMetric_L) × ExecCount_H`. Primary ranking metric for prioritization. |
-| ConfidenceFlags | Indicators affecting result trustworthiness (e.g., `LOW_EXEC`, `MULTI_PLAN`, `MISSING_ONE_SIDE`, `INTERVAL_END_FALLBACK`). Must be reviewed before mitigation. |
-| QueryTextSample | Representative query text sample for the group, provided to quickly identify the workload and facilitate root-cause analysis. |
+| Column                | Meaning                                                                                                                                                                    |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `QueryType`           | Query classification based on execution context (e.g., `ADHOC`, `SP`). Indicates whether the query originated from ad-hoc execution or a stored procedure.                 |
+| `ObjName`             | Object name associated with the query, if applicable (e.g., stored procedure name). Empty for pure ad-hoc queries.                                                         |
+| `GroupKeyHashHex`     | Unique identifier for the logical query group, derived from the selected grouping strategy (`@GroupBy`). Serves as the stable correlation key across LowerCL and HigherCL. |
+| `QueryIdRange_L-H`    | `query_id` ranges observed in **LowerCL–HigherCL** for the query group. Provided for traceability only; IDs are not expected to match across databases.                    |
+| `QueryHashHex_L-H`    | Compiled `query_hash` values (hex) observed in **LowerCL–HigherCL**, shown side-by-side to detect query hash divergence across compatibility levels.                       |
+| `DominantPlanId_L-H`  | **LowerCL–HigherCL** dominant `plan_id` range for the group. Represents the plan that contributed the most executions and/or impact on each side.                          |
+| `DominantQueryId_L-H` | **LowerCL–HigherCL** dominant `query_id` range for the group. Identifies the query instance with the highest execution or impact contribution on each side.                |
+| `PlanCount_L-H`       | Number of **distinct execution plans** observed per side (**LowerCL–HigherCL**). Values greater than 1 indicate plan instability or parameter sensitivity.                 |
+| `ExecCount_L-H`       | Total execution count per side (**LowerCL–HigherCL**) aggregated at the query-group level. Used for confidence evaluation and impact weighting.                            |
+| `TotalMetric_L-H`     | Total aggregated metric consumption per side (**LowerCL–HigherCL**), calculated using execution-count–weighted aggregation.                                                |
+| `AvgMetric_L-H`       | Average metric value per execution (**LowerCL–HigherCL**), derived as `TotalMetric / ExecCount` for each side.                                                             |
+| `TotalDuration_L-H`   | Total execution duration per side (**LowerCL–HigherCL**), aggregated independently from the primary metric. Useful for cross-metric validation.                            |
+| `AvgDuration_L-H`     | Average execution duration per execution (**LowerCL–HigherCL**). Often used to contextualize CPU or I/O regressions.                                                       |
+| `RegressionRatio`     | `AvgMetric_H / NULLIF(AvgMetric_L, 0)` indicating relative regression or improvement when moving from LowerCL to HigherCL.                                                 |
+| `DeltaAvgMetric`      | Absolute delta in average metric: `AvgMetric_H − AvgMetric_L`. Represents per-execution cost increase or decrease.                                                         |
+| `ImpactScore`         | Estimated total regression impact in HigherCL: `(AvgMetric_H − AvgMetric_L) × ExecCount_H`. Primary ranking metric for prioritization.                                     |
+| `ConfidenceFlags`     | Indicators affecting result trustworthiness (e.g., `LOW_EXEC`, `MULTI_PLAN`, `MISSING_ONE_SIDE`, `INTERVAL_END_FALLBACK`). Must be reviewed before mitigation.             |
+| `QueryTextSample`     | Representative query text sample for the group, provided to quickly identify the workload and facilitate root-cause analysis.                                              |
+
 
 > [!TIP]
 > - Sort by ImpactScore descending. This surfaces what actually hurts the system
@@ -504,6 +505,25 @@ This view is useful for:
 - Management summaries
 - Comparing multiple replay iterations
 
+Columns and Their Meanings:
+
+| Column                     | Meaning                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `LowerDb`                  | Baseline database name (resolved as the lower compatibility level DB).                                             |
+| `HigherDb`                 | Candidate database name (resolved as the higher compatibility level DB).                                           |
+| `LowerCL`                  | Lower compatibility level number (e.g., `120`).                                                                    |
+| `HigherCL`                 | Higher compatibility level number (e.g., `170`).                                                                   |
+| `Metric`                   | Selected comparison metric (`LogicalReads`, `CPU`, or `Duration`).                                                 |
+| `GroupBy`                  | Grouping strategy used to form logical query groups (`QueryHash`, `QueryText`, or `NormalizedText`).               |
+| `RegressionCount`          | Number of regressed groups passing the current filters (higher avg metric on HigherCL, plus thresholds).           |
+| `MultiPlanCount`           | Count of regressed groups whose `ConfidenceFlags` include `MULTI_PLAN` (plan instability detected on either side). |
+| `SumImpactScore`           | Sum of `ImpactScore` across filtered regressed groups (aggregate estimated impact at HigherCL volume).             |
+| `MaxImpactScore`           | Maximum single-group `ImpactScore` among filtered regressed groups.                                                |
+| `AvgRegressionRatio`       | Average `RegressionRatio` across filtered regressed groups.                                                        |
+| `TotalExecCount_L-H_SP`    | Total executions for SP groups only, shown as `ExecCount_L - ExecCount_H` summed across filtered groups.           |
+| `TotalExecCount_L-H_Adhoc` | Total executions for Adhoc groups only, shown as `ExecCount_L - ExecCount_H` summed across filtered groups.        |
+| `TotalExecCount_L-H_All`   | Total executions for all groups (SP + Adhoc), shown as `ExecCount_L - ExecCount_H` summed across filtered groups.  |
+
 
 ## Result Set #3 – Multi-Plan Drill-Down (Plan-Level Metrics)
 This result set appears only if multi-plan scenarios exist.
@@ -522,6 +542,29 @@ This view answers:
 - Which plan is dominant?
 - Are plans evenly used or skewed?
 - Is a bad plan dominating in HigherCL?
+
+Columns and Their Meanings:
+
+| Column             | Meaning                                                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `SourceDb`         | The database name that produced the plan row (LowerDb or HigherDb).                                                        |
+| `SourceCL`         | Compatibility level of `SourceDb` (as text).                                                                               |
+| `Side`             | `L` for LowerCL side, `H` for HigherCL side.                                                                               |
+| `QueryType`        | `SP` or `Adhoc` classification based on `object_id`.                                                                       |
+| `ObjName`          | For `SP` only: schema-qualified object name (`schema.object`). `NULL` for Adhoc.                                           |
+| `GroupKeyHashHex`  | Hex representation of the group key hash (group identity under chosen `@GroupBy`).                                         |
+| `PlanId`           | Query Store `plan_id` for this specific plan.                                                                              |
+| `QueryId`          | Query Store `query_id` associated with this plan row.                                                                      |
+| `ExecCount`        | Total executions for this specific `plan_id` over the filtered time window.                                                |
+| `TotalMetric`      | Total metric consumption for this plan (weighted total over executions).                                                   |
+| `AvgMetric`        | Average metric per execution for this plan.                                                                                |
+| `TotalDuration`    | Total duration for this plan (weighted total over executions).                                                             |
+| `AvgDuration`      | Average duration per execution for this plan.                                                                              |
+| `IntervalStartMin` | Earliest runtime stats interval start time contributing to this plan aggregation.                                          |
+| `IntervalEndMax`   | Latest runtime stats interval end time (or start time if `end_time` is unavailable) contributing to this plan aggregation. |
+| `PlanXmlHashHex`   | SHA2-256 hash (hex) of the plan XML text (useful to detect plan shape differences).                                        |
+| `RankByAvgMetric`  | Dense rank within `(SourceDb, GroupKeyHashHex)` ordered by `AvgMetric` DESC (worst avg metric ranks highest).              |
+| `RankByExecCount`  | Dense rank within `(SourceDb, GroupKeyHashHex)` ordered by `ExecCount` DESC (most executed ranks highest).                 |
 
 
 ## Result Set #4 - Dominant Plan Shape Comparison
@@ -558,6 +601,50 @@ Examples include:
 
 These flags are derived directly from plan XML comparison and are intended to accelerate root-cause identification, not replace plan inspection.
 
+Columns and Their Meanings:
+
+| Column                    | Meaning                                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `QueryType`               | `SP` or `Adhoc`.                                                                                                                                       |
+| `ObjName`                 | Schema-qualified object name for SP; `NULL` for Adhoc.                                                                                                 |
+| `GroupKeyHashHex`         | Hex representation of group key hash.                                                                                                                  |
+| `ImpactScore`             | `(AvgMetric_H − AvgMetric_L) × ExecCount_H` (rounded for output).                                                                                      |
+| `RegressionRatio`         | `AvgMetric_H / AvgMetric_L` (rounded for output; NULL if AvgMetric_L is 0/NULL).                                                                       |
+| `ExecCount_L-H`           | `ExecCount_L - ExecCount_H` formatted side-by-side as `L - H`.                                                                                         |
+| `AvgMetric_L-H`           | `AvgMetric_L - AvgMetric_H` formatted side-by-side as `L - H`.                                                                                         |
+| `DominantPlanId_L-H`      | Dominant plan id pair `PlanId_L - PlanId_H` selected per side (based on execution dominance).                                                          |
+| `PlanXmlHashHex_L-H`      | Hash of plan XML text for dominant plans, side-by-side (`L - H`).                                                                                      |
+| `IndexSeekCount_L-H`      | Count of `Index Seek` operators in the dominant plan XML (`L - H`).                                                                                    |
+| `IndexScanCount_L-H`      | Count of `Index Scan` operators in the dominant plan XML (`L - H`).                                                                                    |
+| `TableScanCount_L-H`      | Count of `Table Scan` operators in the dominant plan XML (`L - H`).                                                                                    |
+| `HasHashJoin_L-H`         | Presence (0/1) of `Hash Match` join operator (`L - H`).                                                                                                |
+| `HasMergeJoin_L-H`        | Presence (0/1) of `Merge Join` operator (`L - H`).                                                                                                     |
+| `HasNestedLoops_L-H`      | Presence (0/1) of `Nested Loops` operator (`L - H`).                                                                                                   |
+| `HasParallelism_L-H`      | Presence (0/1) of `Parallelism` operator (`L - H`).                                                                                                    |
+| `GrantedMemoryKB_L-H`     | Granted memory (KB) from `MemoryGrantInfo/@GrantedMemory` in plan XML (`L - H`).                                                                       |
+| `SpillToTempDb_L-H`       | Presence (0/1) of `Warnings/SpillToTempDb` in plan XML (`L - H`).                                                                                      |
+| `MissingIndex_L-H`        | Presence (0/1) of `MissingIndexes` section in plan XML (`L - H`).                                                                                      |
+| `KeyLookupCount_L-H`      | Count of `Key Lookup` operators in plan XML (`L - H`).                                                                                                 |
+| `RIDLookupCount_L-H`      | Count of `RID Lookup` operators in plan XML (`L - H`).                                                                                                 |
+| `SortCount_L-H`           | Count of `Sort` operators in plan XML (`L - H`).                                                                                                       |
+| `HashAggCount_L-H`        | Count of hash aggregate patterns (logical `Aggregate` + physical `Hash Match`) (`L - H`).                                                              |
+| `StreamAggCount_L-H`      | Count of `Stream Aggregate` operators (`L - H`).                                                                                                       |
+| `SpoolCount_L-H`          | Count of spool operators (any RelOp containing “Spool”) (`L - H`).                                                                                     |
+| `ComputeScalarCount_L-H`  | Count of `Compute Scalar` operators (`L - H`).                                                                                                         |
+| `FilterCount_L-H`         | Count of `Filter` operators (`L - H`).                                                                                                                 |
+| `HasAdaptiveJoin_L-H`     | Presence (0/1) of `Adaptive Join` operator (`L - H`).                                                                                                  |
+| `HasBatchMode_L-H`        | Presence (0/1) of any RelOp with `@EstimatedExecutionMode="Batch"` (`L - H`).                                                                          |
+| `HasColumnstore_L-H`      | Presence (0/1) of Columnstore seek/scan usage in plan XML (`L - H`).                                                                                   |
+| `MemoryGrantWarning_L-H`  | Presence (0/1) of `Warnings/MemoryGrantWarning` in plan XML (`L - H`).                                                                                 |
+| `ImplicitConversion_L-H`  | Presence (0/1) of `Warnings/PlanAffectingConvert` (`L - H`).                                                                                           |
+| `NoJoinPredicateWarn_L-H` | Presence (0/1) of `Warnings/NoJoinPredicate` (`L - H`).                                                                                                |
+| `MissingStatsWarn_L-H`    | Presence (0/1) of `Warnings/MissingStatistics` (`L - H`).                                                                                              |
+| `DiffFlags`               | Derived flags summarizing differences between dominant plans (e.g., `PLAN_SHAPE_CHANGED;`, `INDEX_SEEK_COUNT_CHANGED;`, `PARALLELISM_CHANGED;`, etc.). |
+| `QueryTextSample`         | Representative query text sample for quick recognition.                                                                                                |
+| `PlanXml_CL<LowerCL>`     | Dominant plan XML for the LowerCL side (dynamic column name, e.g., `PlanXml_CL120`).                                                                   |
+| `PlanXml_CL<HigherCL>`    | Dominant plan XML for the HigherCL side (dynamic column name, e.g., `PlanXml_CL170`).                                                                  |
+
+
 ## Understanding ConfidenceFlags
 The ConfidenceFlags column helps interpret reliability:
 
@@ -573,7 +660,7 @@ The ConfidenceFlags column helps interpret reliability:
 
 > [!NOTE]
 > - `WEIGHTED_TOTAL` and `PLAN_FIRST_PREAGG` are **informational flags**, not warnings.
->    - They indicate that the script uses execution-count–weighted math and plan-first aggregation by design.
+>    - They indicate that the script uses execution-count-weighted math and plan-first aggregation by design.
 >    - These flags will appear consistently and should be interpreted as **quality signals**, not risk indicators.
 > - When `WEIGHTED_TOTAL` appears without `INTERVAL_END_FALLBACK`, the time window and aggregation are both reliable.
 > - When combined with `LOW_EXEC` or `MULTI_PLAN`, interpretation should consider plan variability or sample size.
