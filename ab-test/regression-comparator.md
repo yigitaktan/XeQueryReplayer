@@ -610,20 +610,6 @@ This view is used to determine:
 - Whether CE changes altered join strategy
 - Whether memory or spill behavior changed
 
-In addition to raw operator counts and plan indicators, this result set exposes a `DiffFlags` column that summarizes **material plan-shape differences** between LowerCL and HigherCL.
-
-Examples include:
-- `PLAN_SHAPE_CHANGED`
-- `JOIN_HASH_CHANGED`, `JOIN_MERGE_CHANGED`, `JOIN_NL_CHANGED`
-- `INDEX_SEEK_COUNT_CHANGED`, `TABLE_SCAN_COUNT_CHANGED`
-- `PARALLELISM_CHANGED`
-- `SPILL_CHANGED`
-- `MISSING_INDEX_CHANGED`
-- `MEMORY_GRANT_WARNING_CHANGED`
-- `IMPLICIT_CONVERSION_CHANGED`
-- `MISSING_STATS_WARN_CHANGED`
-
-These flags are derived directly from plan XML comparison and are intended to accelerate root-cause identification, not replace plan inspection.
 
 Columns and Their Meanings:
 
