@@ -100,6 +100,16 @@ The same Query Store data combined with the same parameter values will always pr
 
 These two databases are treated as independent evidence sources. The script never assumes that `query_id` or `plan_id` values match between them. Correlation happens through the grouping strategy (`@GroupBy`).
 
+> [!IMPORTANT]
+> The script does **not** assume that `@DbA` is always LowerCL and `@DbB` is always HigherCL.
+> It dynamically reads `sys.databases.compatibility_level` for both databases and assigns:
+>
+> - **LowerCL** to the database with the smaller compatibility level
+> - **HigherCL** to the database with the larger compatibility level
+>
+> This ensures correct A/B labeling even if database names or parameter order are swapped.
+
+
 ### Scope and Noise Control
 
 - `@MinExecCount`  
@@ -204,6 +214,17 @@ These two databases are treated as independent evidence sources. The script neve
     Exact text match. Useful when you want strict identity matching (usually for controlled workloads).
   - `NormalizedText`  
     Groups by whitespace-normalized text. Useful for ad-hoc heavy systems where the same query appears with minor formatting differences.
+  - `NormalizedText`  
+    Groups queries by a normalized representation of query text.
+      Normalization is implemented as:
+      - Truncation to the first 4000 characters
+      - Removal of CR/LF/TAB characters
+      - Whitespace compaction
+      - Lower-casing
+      - SHA-256 hashing of the normalized text
+
+    This mode is useful for ad-hoc–heavy workloads where the same logical query appears with minor formatting differences, but it can still merge distinct queries if their normalized forms collide.
+  
 
   **Trade-off**:
   - Too strict (`QueryText`) can fragment results (same logical query becomes multiple groups).
@@ -412,6 +433,23 @@ Each result set builds on the previous one and is intended to be consumed in seq
 
 This layered output model allows engineers to move from high-level risk identification to low-level plan analysis without losing context, while keeping each result set focused, readable, and purpose-driven.
 
+### PERF Output (Execution Diagnostics)
+
+In addition to result sets, the script prints a **step-by-step performance table** to the Messages tab.
+
+This includes:
+- Step name
+- Execution time (ms)
+- Rows affected
+- Start and end timestamps
+
+This output is intended for:
+- Debugging script performance
+- Identifying expensive analysis phases
+- Verifying that large workloads are processed as expected
+
+PERF output does **not** affect analytical results and can be safely ignored for functional analysis.
+
 
 ## Result Set #1 – Regression Overview (Primary Analysis View)
 This is the main entry point for analysis.
@@ -431,6 +469,7 @@ Key Columns and How to Read Them:
 | `GroupKeyHashHex`        | Unique identifier for the logical query group                                                                                             |
 | `DominantQueryId_L-H`    | LowerCL-HigherCL dominant `query_id` range for the group (the `query_id` that contributed the most to executions/impact on each side) |
 | `QueryIdRange_L-H`       | `query_id` ranges observed in LowerCL-HigherCL for the group                                                                          |
+| `QueryHashHex_L-H`       | LowerCL-HigherCL compiled query_hash values (hex), shown side-by-side to help detect hash divergence across compatibility levels |
 | `DominantPlanId_L-H`     | LowerCL-HigherCL dominant `plan_id` range for the group (the `plan_id` that was most prevalent / most executed on each side)          |
 | `PlanCount_L-H`          | Number of distinct cached/executed plans per side (LowerCL-HigherCL)                                                              |
 | `ExecCount_L-H`          | Total executions per side (LowerCL-HigherCL)                                                                                          |
@@ -466,11 +505,14 @@ This view is useful for:
 ## Result Set #3 – Multi-Plan Drill-Down (Plan-Level Metrics)
 This result set appears only if multi-plan scenarios exist.
 
-It breaks down each plan within a query group, per database, including:
+It breaks down **each execution plan** within a query group, per database, including:
 
 - Execution counts
 - Average and total metric usage
-- Ranking by impact and frequency
+- Interval coverage
+- Plan XML hash
+- **RankByAvgMetric** (relative cost dominance)
+- **RankByExecCount** (execution dominance)
 
 This view answers:
 
@@ -498,6 +540,20 @@ This view is used to determine:
 - Whether CE changes altered join strategy
 - Whether memory or spill behavior changed
 
+In addition to raw operator counts and plan indicators, this result set exposes a `DiffFlags` column that summarizes **material plan-shape differences** between LowerCL and HigherCL.
+
+Examples include:
+- `PLAN_SHAPE_CHANGED`
+- `JOIN_HASH_CHANGED`, `JOIN_MERGE_CHANGED`, `JOIN_NL_CHANGED`
+- `INDEX_SEEK_COUNT_CHANGED`, `TABLE_SCAN_COUNT_CHANGED`
+- `PARALLELISM_CHANGED`
+- `SPILL_CHANGED`
+- `MISSING_INDEX_CHANGED`
+- `MEMORY_GRANT_WARNING_CHANGED`
+- `IMPLICIT_CONVERSION_CHANGED`
+- `MISSING_STATS_WARN_CHANGED`
+
+These flags are derived directly from plan XML comparison and are intended to accelerate root-cause identification, not replace plan inspection.
 
 ## Understanding ConfidenceFlags
 The ConfidenceFlags column helps interpret reliability:
@@ -509,13 +565,16 @@ The ConfidenceFlags column helps interpret reliability:
 | MULTI_PLAN            | Multiple execution plans were observed for the same query/group. This may indicate parameter sensitivity, plan instability, or optimizer behavior changes across compatibility levels. |
 | INTERVAL_END_FALLBACK | The Query Store runtime statistics interval does not expose a reliable end_time column (engine-version dependent). The script fell back to using the maximum observed start_time, which may slightly reduce temporal precision. |
 | WEIGHTED_TOTAL        | Metrics were calculated using execution-count-weighted aggregation (SUM(avg_metric × execution_count)), ensuring that frequently executed plans contribute proportionally more to totals and averages. This improves accuracy compared to simple averages, especially for uneven execution distributions. |
+| PLAN_FIRST_PREAGG | Indicates that metrics were first aggregated at the plan level before grouping, ensuring deterministic execution-weighted math and avoiding interval-level distortion. |
+
 
 > [!NOTE]
-> - WEIGHTED_TOTAL is not a warning. It is an informational confidence indicator stating that the metric math is based on statistically correct, weighted aggregation.
-> - When WEIGHTED_TOTAL appears without INTERVAL_END_FALLBACK, the time window and aggregation are both reliable.
-> - When combined with LOW_EXEC or MULTI_PLAN, interpretation should consider plan variability or sample size.
+> - `WEIGHTED_TOTAL` and `PLAN_FIRST_PREAGG` are **informational flags**, not warnings.
+>    - They indicate that the script uses execution-count–weighted math and plan-first aggregation by design.
+>    - These flags will appear consistently and should be interpreted as **quality signals**, not risk indicators.
+> - When `WEIGHTED_TOTAL` appears without `INTERVAL_END_FALLBACK`, the time window and aggregation are both reliable.
+> - When combined with `LOW_EXEC` or `MULTI_PLAN`, interpretation should consider plan variability or sample size.
 > - Confidence flags are not a verdict. They do not automatically invalidate results, but they **must** be considered before drawing conclusions or applying mitigations.
-
 
 
 ## Recommended Analysis Workflow
