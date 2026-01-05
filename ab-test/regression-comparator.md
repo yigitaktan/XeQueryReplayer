@@ -8,10 +8,10 @@
 * **[Regression Detection Methodology](#regression-detection-methodology)**
 * **[Result Sets Overview](#result-sets-overview)**
 * **[Result Set #1 - Regression Overview (Primary Analysis View)](#result-set-1--regression-overview-primary-analysis-view)**
+  * **[Understanding ConfidenceFlags](#understanding-confidenceflags)**
 * **[Result Set #2 - Summary Statistics](#result-set-2---summary-statistics)**
 * **[Result Set #3 - Multi-Plan Drill-Down (Plan-Level Metrics)](#result-set-3--multi-plan-drill-down-plan-level-metrics)**
 * **[Result Set #4 - Dominant Plan Shape Comparison](#result-set-4---dominant-plan-shape-comparison)**
-* **[Understanding ConfidenceFlags](#understanding-confidenceflags)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
 * **[Mitigation Playbook](#mitigation-playbook)**
   * **[Query-Level Hints](#query-level-hints)**
@@ -413,19 +413,19 @@ Rather than forcing all information into a single, overloaded output, the result
 
 Each result set builds on the previous one and is intended to be consumed in sequence:
 
-- **Result Set #1 – Regression Overview**  
+- **Result Set #1 - Regression Overview**  
   Identifies where regressions exist by comparing LowerCL and HigherCL at the query-group level.  
   This result set quantifies regression severity using metrics such as AvgMetric delta, RegressionRatio, and ImpactScore, and serves as the primary entry point for analysis.
 
-- **Result Set #2 – Summary Statistics**  
+- **Result Set #2 - Summary Statistics**  
   Provides an aggregated, high-level view of the overall regression landscape, including counts, total impact, and distribution characteristics.  
   This result set is useful for understanding systemic risk and supporting go/no-go decisions.
 
-- **Result Set #3 – Multi-Plan Drill-Down**  
+- **Result Set #3 - Multi-Plan Drill-Down**  
   Explains why a regression may have occurred by exposing plan-level behavior for query groups with multiple execution plans.  
   It helps identify plan dominance shifts, parameter sensitivity, and plan instability across compatibility levels.
 
-- **Result Set #4 – Dominant Plan Shape Comparison**  
+- **Result Set #4 - Dominant Plan Shape Comparison**  
   Provides low-level diagnostic detail by comparing the dominant execution plan from LowerCL and HigherCL.  
   This result set highlights operator-level differences, join strategy changes, memory grant behavior, and other plan-shape variations that often explain observed regressions.
 
@@ -450,7 +450,7 @@ This output is intended for:
 PERF output does **not** affect analytical results and can be safely ignored for functional analysis.
 
 
-## Result Set #1 – Regression Overview (Primary Analysis View)
+## Result Set #1 - Regression Overview (Primary Analysis View)
 This is the main entry point for analysis.
 
 It lists only queries where:
@@ -491,6 +491,29 @@ Columns and Their Meanings:
 > - A moderate ratio with a high ImpactScore deserves immediate attention
 
 
+
+### Understanding ConfidenceFlags
+The ConfidenceFlags column helps interpret reliability:
+
+| Flag                  | Meaning |
+|-----------------------|---------|
+| MISSING_ONE_SIDE      | The query (or grouped query signature) was observed only on one side (LowerCL or HigherCL). This usually indicates workload drift, filtering effects, or capture window mismatch rather than a true regression. |
+| LOW_EXEC              | The execution count on one or both sides is below the configured @MinExecCount threshold. Results with this flag should be treated with lower confidence due to insufficient sample size. |
+| MULTI_PLAN            | Multiple execution plans were observed for the same query/group. This may indicate parameter sensitivity, plan instability, or optimizer behavior changes across compatibility levels. |
+| INTERVAL_END_FALLBACK | The Query Store runtime statistics interval does not expose a reliable end_time column (engine-version dependent). The script fell back to using the maximum observed start_time, which may slightly reduce temporal precision. |
+| WEIGHTED_TOTAL        | Metrics were calculated using execution-count-weighted aggregation (SUM(avg_metric × execution_count)), ensuring that frequently executed plans contribute proportionally more to totals and averages. This improves accuracy compared to simple averages, especially for uneven execution distributions. |
+| PLAN_FIRST_PREAGG | Indicates that metrics were first aggregated at the plan level before grouping, ensuring deterministic execution-weighted math and avoiding interval-level distortion. |
+
+
+> [!NOTE]
+> - `WEIGHTED_TOTAL` and `PLAN_FIRST_PREAGG` are **informational flags**, not warnings.
+>    - They indicate that the script uses execution-count-weighted math and plan-first aggregation by design.
+>    - These flags will appear consistently and should be interpreted as **quality signals**, not risk indicators.
+> - When `WEIGHTED_TOTAL` appears without `INTERVAL_END_FALLBACK`, the time window and aggregation are both reliable.
+> - When combined with `LOW_EXEC` or `MULTI_PLAN`, interpretation should consider plan variability or sample size.
+> - Confidence flags are not a verdict. They do not automatically invalidate results, but they **must** be considered before drawing conclusions or applying mitigations.
+
+
 ## Result Set #2 - Summary Statistics
 This result set provides a high-level assessment of the comparison:
 
@@ -525,7 +548,7 @@ Columns and Their Meanings:
 | `TotalExecCount_L-H_All`   | Total executions for all groups (SP + Adhoc), shown as `ExecCount_L - ExecCount_H` summed across filtered groups.  |
 
 
-## Result Set #3 – Multi-Plan Drill-Down (Plan-Level Metrics)
+## Result Set #3 - Multi-Plan Drill-Down (Plan-Level Metrics)
 This result set appears only if multi-plan scenarios exist.
 
 It breaks down **each execution plan** within a query group, per database, including:
@@ -643,29 +666,6 @@ Columns and Their Meanings:
 | `QueryTextSample`         | Representative query text sample for quick recognition.                                                                                                |
 | `PlanXml_CL<LowerCL>`     | Dominant plan XML for the LowerCL side (dynamic column name, e.g., `PlanXml_CL120`).                                                                   |
 | `PlanXml_CL<HigherCL>`    | Dominant plan XML for the HigherCL side (dynamic column name, e.g., `PlanXml_CL170`).                                                                  |
-
-
-## Understanding ConfidenceFlags
-The ConfidenceFlags column helps interpret reliability:
-
-| Flag                  | Meaning |
-|-----------------------|---------|
-| MISSING_ONE_SIDE      | The query (or grouped query signature) was observed only on one side (LowerCL or HigherCL). This usually indicates workload drift, filtering effects, or capture window mismatch rather than a true regression. |
-| LOW_EXEC              | The execution count on one or both sides is below the configured @MinExecCount threshold. Results with this flag should be treated with lower confidence due to insufficient sample size. |
-| MULTI_PLAN            | Multiple execution plans were observed for the same query/group. This may indicate parameter sensitivity, plan instability, or optimizer behavior changes across compatibility levels. |
-| INTERVAL_END_FALLBACK | The Query Store runtime statistics interval does not expose a reliable end_time column (engine-version dependent). The script fell back to using the maximum observed start_time, which may slightly reduce temporal precision. |
-| WEIGHTED_TOTAL        | Metrics were calculated using execution-count-weighted aggregation (SUM(avg_metric × execution_count)), ensuring that frequently executed plans contribute proportionally more to totals and averages. This improves accuracy compared to simple averages, especially for uneven execution distributions. |
-| PLAN_FIRST_PREAGG | Indicates that metrics were first aggregated at the plan level before grouping, ensuring deterministic execution-weighted math and avoiding interval-level distortion. |
-
-
-> [!NOTE]
-> - `WEIGHTED_TOTAL` and `PLAN_FIRST_PREAGG` are **informational flags**, not warnings.
->    - They indicate that the script uses execution-count-weighted math and plan-first aggregation by design.
->    - These flags will appear consistently and should be interpreted as **quality signals**, not risk indicators.
-> - When `WEIGHTED_TOTAL` appears without `INTERVAL_END_FALLBACK`, the time window and aggregation are both reliable.
-> - When combined with `LOW_EXEC` or `MULTI_PLAN`, interpretation should consider plan variability or sample size.
-> - Confidence flags are not a verdict. They do not automatically invalidate results, but they **must** be considered before drawing conclusions or applying mitigations.
-
 
 ## Recommended Analysis Workflow
 
