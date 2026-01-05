@@ -83,7 +83,7 @@ The script is designed to be fully deterministic and operator-driven. In other w
 At a high level, the script runs in four phases:
 
 1. **Extract** Query Store runtime stats independently from each database (`@DbA` and `@DbB`)
-2. **Normalize / Group** queries into logical “query groups” using `@GroupBy`
+2. **Normalize / Group** queries into logical "query groups" using `@GroupBy`
 3. **Compute** weighted totals, averages, ratios, and impact using the selected `@Metric`
 4. **Filter + Rank + Flag** the output using thresholds and inclusion rules (`@MinExecCount`, `@MinRegressionRatio`, `@OnlyMultiPlan`, `@IncludeAdhoc`, `@IncludeSP`, and optional time filtering)
 
@@ -128,7 +128,7 @@ These two databases are treated as independent evidence sources. The script neve
 > Setting `@MinExecCount` too low can amplify **statistical noise** (false positives). Setting it too high can hide real regressions that occur on important but lower-frequency paths (false negatives). Tune it based on replay duration and workload shape.
 
 - `@MinRegressionRatio`  
-  Controls the minimum regression ratio that qualifies as a “regression candidate.”  
+  Controls the minimum regression ratio that qualifies as a "regression candidate".  
   The script computes:
 
   `RegressionRatio = AvgMetric_H / NULLIF(AvgMetric_L, 0)`
@@ -319,7 +319,7 @@ These two databases are treated as independent evidence sources. The script neve
 
 > [!TIP]
 > - Keep this table in a dedicated utility database if multiple teams use it.
-> - Consider adding a run identifier (timestamp, run label, capture window) if the script doesn’t already store one, so multiple runs can coexist cleanly.
+> - Consider adding a run identifier (timestamp, run label, capture window) if the script doesn't already store one, so multiple runs can coexist cleanly.
 
 
 ## How Queries Are Grouped
@@ -335,7 +335,7 @@ To solve this, the script uses a configurable **logical grouping strategy**, con
 |--------------------|--------------------------------------|-------------------------------------------|
 | `QueryHash`        | Groups by compiled query shape       | Default and recommended for most analyses |
 | `QueryText`        | Groups by exact query text           | Useful for static, well-controlled code   |
-| `NormalizedText`   | Groups by whitespace-normalized text | Useful for ad-hoc–heavy systems           |
+| `NormalizedText`   | Groups by whitespace-normalized text | Useful for ad-hoc-heavy systems           |
 
 Each logical group is internally represented by a **GroupKeyHash**, which acts as a stable identifier for the query across both databases.
 
@@ -368,7 +368,7 @@ Query Store exposes runtime statistics as averages per plan and interval.
 
 To produce accurate, workload-representative comparisons, the script does not rely on simple averages.
 
-Instead, all metrics are aggregated using **execution-count–weighted math**:
+Instead, all metrics are aggregated using **execution-count-weighted math**:
 
 - **TotalMetric**  
   `SUM(avg_metric × execution_count)`
@@ -475,7 +475,7 @@ Columns and Their Meanings:
 | `DominantQueryId_L-H` | **LowerCL-HigherCL** dominant `query_id` range for the group. Identifies the query instance with the highest execution or impact contribution on each side.                |
 | `PlanCount_L-H`       | Number of **distinct execution plans** observed per side (**LowerCL-HigherCL**). Values greater than 1 indicate plan instability or parameter sensitivity.                 |
 | `ExecCount_L-H`       | Total execution count per side (**LowerCL-HigherCL**) aggregated at the query-group level. Used for confidence evaluation and impact weighting.                            |
-| `TotalMetric_L-H`     | Total aggregated metric consumption per side (**LowerCL-HigherCL**), calculated using execution-count–weighted aggregation.                                                |
+| `TotalMetric_L-H`     | Total aggregated metric consumption per side (**LowerCL-HigherCL**), calculated using execution-count-weighted aggregation.                                                |
 | `AvgMetric_L-H`       | Average metric value per execution (**LowerCL-HigherCL**), derived as `TotalMetric / ExecCount` for each side.                                                             |
 | `TotalDuration_L-H`   | Total execution duration per side (**LowerCL-HigherCL**), aggregated independently from the primary metric. Useful for cross-metric validation.                            |
 | `AvgDuration_L-H`     | Average execution duration per execution (**LowerCL-HigherCL**). Often used to contextualize CPU or I/O regressions.                                                       |
@@ -653,7 +653,7 @@ Columns and Their Meanings:
 | `SortCount_L-H`           | Count of `Sort` operators in plan XML (`L - H`).                                                                                                       |
 | `HashAggCount_L-H`        | Count of hash aggregate patterns (logical `Aggregate` + physical `Hash Match`) (`L - H`).                                                              |
 | `StreamAggCount_L-H`      | Count of `Stream Aggregate` operators (`L - H`).                                                                                                       |
-| `SpoolCount_L-H`          | Count of spool operators (any RelOp containing “Spool”) (`L - H`).                                                                                     |
+| `SpoolCount_L-H`          | Count of spool operators (any RelOp containing "Spool") (`L - H`).                                                                                     |
 | `ComputeScalarCount_L-H`  | Count of `Compute Scalar` operators (`L - H`).                                                                                                         |
 | `FilterCount_L-H`         | Count of `Filter` operators (`L - H`).                                                                                                                 |
 | `HasAdaptiveJoin_L-H`     | Presence (0/1) of `Adaptive Join` operator (`L - H`).                                                                                                  |
@@ -670,7 +670,7 @@ Columns and Their Meanings:
 
 ### Understanding DiffFlags
 
-The `DiffFlags` column summarizes **dominant plan differences** between LowerCL and HigherCL for `MULTI_PLAN` drilldowns (Resultset #4). It is derived by comparing plan-XML–extracted indicators side-by-side and emitting flags when a meaningful difference is detected.
+The `DiffFlags` column summarizes **dominant plan differences** between LowerCL and HigherCL for `MULTI_PLAN` drilldowns (Resultset #4). It is derived by comparing plan-XML-extracted indicators side-by-side and emitting flags when a meaningful difference is detected.
 
 | Flag                             | Meaning                                                                                                                                                                                                                                                |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -683,7 +683,7 @@ The `DiffFlags` column summarizes **dominant plan differences** between LowerCL 
 | `JOIN_NL_CHANGED`                | Presence/absence of `Nested Loops` differs between sides (`HasNestedLoops` changed). Indicates join strategy change, often sensitive to cardinality estimates and parameter values.                                                                    |
 | `PARALLELISM_CHANGED`            | Presence/absence of `Parallelism` operators differs between sides (`HasParallelism` changed). Can materially affect CPU and elapsed time; may also affect memory grants and spills.                                                                    |
 | `SPILL_CHANGED`                  | Presence/absence of `Warnings/SpillToTempDb` differs between sides (`HasSpillToTempDb` changed). A spill appearing on HigherCL is a high-confidence regression indicator (tempdb usage, extra I/O).                                                    |
-| `MISSING_INDEX_CHANGED`          | Presence/absence of `MissingIndexes` differs between sides (`HasMissingIndex` changed). Note: missing-index suggestions are heuristic; treat as “signal,” not a required fix.                                                                          |
+| `MISSING_INDEX_CHANGED`          | Presence/absence of `MissingIndexes` differs between sides (`HasMissingIndex` changed). Note: missing-index suggestions are heuristic; treat as "signal", not a required fix.                                                                          |
 | `KEY_LOOKUP_COUNT_CHANGED`       | The number of `Key Lookup` operators differs between sides. Higher key-lookup frequency can increase logical reads and latency.                                                                                                                        |
 | `RID_LOOKUP_COUNT_CHANGED`       | The number of `RID Lookup` operators differs between sides. Similar implications as key lookups (more random I/O patterns).                                                                                                                            |
 | `SORT_COUNT_CHANGED`             | The number of `Sort` operators differs between sides. More sorts can increase CPU and memory pressure and may contribute to spills.                                                                                                                    |
@@ -707,10 +707,10 @@ The `DiffFlags` column summarizes **dominant plan differences** between LowerCL 
 
 > [!IMPORTANT]
 >
-> * `DiffFlags` are **comparative**: each flag means “this attribute differs between LowerCL and HigherCL dominant plans,” not “HigherCL is wrong.”
+> * `DiffFlags` are **comparative**: each flag means "this attribute differs between LowerCL and HigherCL dominant plans", not "HigherCL is wrong".
 > * `PLAN_SHAPE_CHANGED` is the broadest signal. Many other changes may occur even when the plan hash stays the same (rare), but **a hash change is a strong indicator** the shape changed.
 > * Flags like `SPILL_CHANGED`, `PARALLELISM_CHANGED`, `GRANTED_MEMORY_CHANGED`, and scan/seek shifts typically correlate most strongly with real-world regressions and are good candidates for prioritized investigation.
-> * Some flags can be triggered by missing data: if one side’s plan XML indicators are NULL and the other side has values, comparisons using `ISNULL(...,-1)` or `ISNULL(...,0)` will still produce a change flag. In those cases, validate that both sides have comparable plan XML availability.
+> * Some flags can be triggered by missing data: if one side's plan XML indicators are NULL and the other side has values, comparisons using `ISNULL(...,-1)` or `ISNULL(...,0)` will still produce a change flag. In those cases, validate that both sides have comparable plan XML availability.
 
 > [!NOTE]
 >
@@ -1122,7 +1122,7 @@ Multiple plans alone are not a problem. Focus on whether the dominant plan chang
 - CPU for compute-bound systems
 - Duration for user-facing latency
 
-Always align the metric with the workload’s bottleneck.
+Always align the metric with the workload's bottleneck.
 
 #### Why does a query appear only on one side?
 This can happen due to plan elimination, parameter sensitivity, or replay timing. Such cases require manual validation.
