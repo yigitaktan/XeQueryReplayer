@@ -12,6 +12,7 @@
 * **[Result Set #2 - Summary Statistics](#result-set-2---summary-statistics)**
 * **[Result Set #3 - Multi-Plan Drill-Down (Plan-Level Metrics)](#result-set-3--multi-plan-drill-down-plan-level-metrics)**
 * **[Result Set #4 - Dominant Plan Shape Comparison](#result-set-4---dominant-plan-shape-comparison)**
+  * **[Understanding DiffFlags](#understanding-diffflags)**
 * **[Recommended Analysis Workflow](#recommended-analysis-workflow)**
 * **[Mitigation Playbook](#mitigation-playbook)**
   * **[Query-Level Hints](#query-level-hints)**
@@ -666,6 +667,57 @@ Columns and Their Meanings:
 | `QueryTextSample`         | Representative query text sample for quick recognition.                                                                                                |
 | `PlanXml_CL<LowerCL>`     | Dominant plan XML for the LowerCL side (dynamic column name, e.g., `PlanXml_CL120`).                                                                   |
 | `PlanXml_CL<HigherCL>`    | Dominant plan XML for the HigherCL side (dynamic column name, e.g., `PlanXml_CL170`).                                                                  |
+
+### Understanding DiffFlags
+
+The `DiffFlags` column summarizes **dominant plan differences** between LowerCL and HigherCL for `MULTI_PLAN` drilldowns (Resultset #4). It is derived by comparing plan-XML–extracted indicators side-by-side and emitting flags when a meaningful difference is detected.
+
+| Flag                             | Meaning                                                                                                                                                                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PLAN_SHAPE_CHANGED`             | The dominant plan XML hash differs between sides (or exists only on one side). This indicates the overall plan shape likely changed across CLs (different operators/order/structure), not just a scalar estimate change.                               |
+| `INDEX_SEEK_COUNT_CHANGED`       | The number of `Index Seek` operators in the dominant plan differs between LowerCL and HigherCL. This often reflects access-path changes (seek vs scan shifts, different indexes, or different join orders).                                            |
+| `INDEX_SCAN_COUNT_CHANGED`       | The number of `Index Scan` operators differs between sides. Increased scans on HigherCL can correlate with higher I/O for `LogicalReads`.                                                                                                              |
+| `TABLE_SCAN_COUNT_CHANGED`       | The number of `Table Scan` operators differs between sides. This is a strong signal of potential access-path regression if scans appear/increase on HigherCL.                                                                                          |
+| `JOIN_HASH_CHANGED`              | Presence/absence of a `Hash Match` join differs between sides (`HasHashJoin` changed). Indicates join strategy changed.                                                                                                                                |
+| `JOIN_MERGE_CHANGED`             | Presence/absence of a `Merge Join` differs between sides (`HasMergeJoin` changed). Indicates join strategy change, often sensitive to ordering and indexes.                                                                                            |
+| `JOIN_NL_CHANGED`                | Presence/absence of `Nested Loops` differs between sides (`HasNestedLoops` changed). Indicates join strategy change, often sensitive to cardinality estimates and parameter values.                                                                    |
+| `PARALLELISM_CHANGED`            | Presence/absence of `Parallelism` operators differs between sides (`HasParallelism` changed). Can materially affect CPU and elapsed time; may also affect memory grants and spills.                                                                    |
+| `SPILL_CHANGED`                  | Presence/absence of `Warnings/SpillToTempDb` differs between sides (`HasSpillToTempDb` changed). A spill appearing on HigherCL is a high-confidence regression indicator (tempdb usage, extra I/O).                                                    |
+| `MISSING_INDEX_CHANGED`          | Presence/absence of `MissingIndexes` differs between sides (`HasMissingIndex` changed). Note: missing-index suggestions are heuristic; treat as “signal,” not a required fix.                                                                          |
+| `KEY_LOOKUP_COUNT_CHANGED`       | The number of `Key Lookup` operators differs between sides. Higher key-lookup frequency can increase logical reads and latency.                                                                                                                        |
+| `RID_LOOKUP_COUNT_CHANGED`       | The number of `RID Lookup` operators differs between sides. Similar implications as key lookups (more random I/O patterns).                                                                                                                            |
+| `SORT_COUNT_CHANGED`             | The number of `Sort` operators differs between sides. More sorts can increase CPU and memory pressure and may contribute to spills.                                                                                                                    |
+| `HASH_AGG_COUNT_CHANGED`         | The count of hash-aggregate patterns (logical `Aggregate` with physical `Hash Match`) differs between sides. Indicates aggregation strategy and memory behavior may have changed.                                                                      |
+| `STREAM_AGG_COUNT_CHANGED`       | The number of `Stream Aggregate` operators differs between sides. A shift between stream and hash aggregation typically reflects ordering changes and/or cardinality differences.                                                                      |
+| `SPOOL_COUNT_CHANGED`            | The number of spool operators differs between sides. Spools can indicate optimizer strategy shifts and can add hidden I/O/cpu cost under concurrency.                                                                                                  |
+| `FILTER_COUNT_CHANGED`           | The number of `Filter` operators differs between sides. This can reflect predicate pushdown changes or different join/order choices.                                                                                                                   |
+| `COMPUTE_SCALAR_COUNT_CHANGED`   | The number of `Compute Scalar` operators differs between sides. Usually secondary, but may be relevant when it corresponds to added expressions/conversions.                                                                                           |
+| `ADAPTIVE_JOIN_CHANGED`          | Presence/absence of `Adaptive Join` differs between sides (`HasAdaptiveJoin` changed). Indicates the optimizer chose (or avoided) adaptive join behavior on one side.                                                                                  |
+| `BATCH_MODE_CHANGED`             | Presence/absence of batch mode differs between sides (`HasBatchMode` changed). Batch mode can significantly affect CPU efficiency and throughput.                                                                                                      |
+| `COLUMNSTORE_USAGE_CHANGED`      | Presence/absence of columnstore access (`HasColumnstore`) differs between sides. Can materially affect I/O/CPU characteristics.                                                                                                                        |
+| `REQUESTED_MEMORY_CHANGED`       | The requested memory grant (KB) differs between sides (`RequestedMemoryKB` changed). This can influence spills, concurrency, and latency. *(Note: in Resultset #4 output, `RequestedMemoryKB_L-H` is commented out, but the diff check still exists.)* |
+| `GRANTED_MEMORY_CHANGED`         | The granted memory (KB) differs between sides (`GrantedMemoryKB` changed). A smaller grant on HigherCL may correlate with spills or slower execution; a larger grant may reduce spills but increase concurrency pressure.                              |
+| `USED_MEMORY_CHANGED`            | The used memory (KB) differs between sides (`UsedMemoryKB` changed). *(Note: output column is commented out, but the diff check exists.)*                                                                                                              |
+| `MEMORY_GRANT_WARNING_CHANGED`   | Presence/absence of `MemoryGrantWarning` differs between sides. Suggests memory grant behavior changed (under/over-grant), often meaningful for perf.                                                                                                  |
+| `IMPLICIT_CONVERSION_CHANGED`    | Presence/absence of `PlanAffectingConvert` warning differs between sides. Can indicate implicit conversions impacting cardinality estimates or index usage.                                                                                            |
+| `NO_JOIN_PREDICATE_WARN_CHANGED` | Presence/absence of `NoJoinPredicate` warning differs between sides. This can indicate a join predicate issue (e.g., accidental cross join) or plan XML warning differences. Treat as high severity.                                                   |
+| `MISSING_STATS_WARN_CHANGED`     | Presence/absence of `MissingStatistics` warning differs between sides. Can correlate with estimation errors and plan instability; typically warrants stats review.                                                                                     |
+
+
+
+> [!IMPORTANT]
+>
+> * `DiffFlags` are **comparative**: each flag means “this attribute differs between LowerCL and HigherCL dominant plans,” not “HigherCL is wrong.”
+> * `PLAN_SHAPE_CHANGED` is the broadest signal. Many other changes may occur even when the plan hash stays the same (rare), but **a hash change is a strong indicator** the shape changed.
+> * Flags like `SPILL_CHANGED`, `PARALLELISM_CHANGED`, `GRANTED_MEMORY_CHANGED`, and scan/seek shifts typically correlate most strongly with real-world regressions and are good candidates for prioritized investigation.
+> * Some flags can be triggered by missing data: if one side’s plan XML indicators are NULL and the other side has values, comparisons using `ISNULL(...,-1)` or `ISNULL(...,0)` will still produce a change flag. In those cases, validate that both sides have comparable plan XML availability.
+
+> [!NOTE]
+>
+> * `REQUESTED_MEMORY_CHANGED`, `USED_MEMORY_CHANGED` are **computed** but their corresponding side-by-side output columns are currently commented out in Resultset #4. If you want, we can (optionally) uncomment those output columns to make the flags directly auditable in the row output.
+> * `DiffFlags` should be interpreted together with `RegressionRatio`, `ImpactScore`, and the plan-level breakdown (Resultset #3). A single flag alone is rarely sufficient to justify a mitigation.
+
+
 
 ## Recommended Analysis Workflow
 
